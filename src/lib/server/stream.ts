@@ -1,4 +1,3 @@
-import { Innertube } from 'youtubei.js/cf-worker';
 import type { StreamData } from '#lib/types';
 
 // Ensure fetch is bound to globalThis in Workers isolate
@@ -10,19 +9,6 @@ if (typeof globalThis.fetch === 'function') {
 
 // In-memory fallback cache for development or when KV is not bound
 const memoryStreamCache = new Map<string, StreamData>();
-
-// Singleton Innertube instance
-let innertubePromise: Promise<Innertube> | null = null;
-
-async function getInnertube(): Promise<Innertube> {
-	if (!innertubePromise) {
-		innertubePromise = Innertube.create().catch((err) => {
-			innertubePromise = null;
-			throw err;
-		});
-	}
-	return innertubePromise;
-}
 
 export function isStreamExpired(url: string | null | undefined): boolean {
 	if (!url) return true;
@@ -51,7 +37,7 @@ function extractExpiry(url: string): number | undefined {
 }
 
 /**
- * Tier 5: Direct YouTube Innertube Android Player API
+ * Direct YouTube Innertube Android Player API
  * Direct POST without signature cipher required (as detailed in MECHANISM.md §3.1)
  */
 async function resolveViaInnertubeDirect(videoId: string): Promise<StreamData | null> {
@@ -127,49 +113,6 @@ async function resolveViaInnertubeDirect(videoId: string): Promise<StreamData | 
 }
 
 /**
- * Tier 6: youtubei.js resolution fallback
- */
-async function resolveViaYoutubei(videoId: string): Promise<StreamData | null> {
-	try {
-		const yt = await getInnertube();
-		const info = await yt.getInfo(videoId);
-
-		if (!info || !info.streaming_data) return null;
-
-		const audioFormats = (info.streaming_data.adaptive_formats || [])
-			.filter((f) => f.has_audio && !f.has_video)
-			.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-
-		if (audioFormats.length === 0) return null;
-
-		const best =
-			audioFormats.find((f) => f.itag === 140) ||
-			audioFormats.find((f) => f.itag === 251) ||
-			audioFormats[0];
-
-		// Decide URL using decipher if needed
-		let url = best.url;
-		if (!url && typeof (best as any).decipher === 'function') {
-			url = await (best as any).decipher(yt.session.player);
-		}
-
-		if (!url) return null;
-
-		return {
-			videoId,
-			url,
-			itag: best.itag,
-			codec: best.mime_type?.includes('opus') ? 'opus' : 'aac',
-			bitrate: best.bitrate,
-			expiresAt: extractExpiry(url)
-		};
-	} catch (err) {
-		console.error('youtubei.js resolution failed:', err);
-		return null;
-	}
-}
-
-/**
  * Main stream resolver with KV caching & fallback logic
  */
 export async function resolveStream(
@@ -199,19 +142,14 @@ export async function resolveStream(
 		}
 	}
 
-	// 2. Try Tier 5: Direct Innertube Android Player API
-	let stream = await resolveViaInnertubeDirect(videoId);
-
-	// 3. Fallback to Tier 6: youtubei.js
-	if (!stream || !stream.url) {
-		stream = await resolveViaYoutubei(videoId);
-	}
+	// 2. Try Direct Innertube Android Player API
+	const stream = await resolveViaInnertubeDirect(videoId);
 
 	if (!stream || !stream.url) {
 		throw new Error(`Failed to resolve playable audio stream for videoId: ${videoId}`);
 	}
 
-	// 4. Save to cache
+	// 3. Save to cache
 	if (kv) {
 		try {
 			// TTL: remaining seconds minus 30 mins

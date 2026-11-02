@@ -1,24 +1,9 @@
-import { Innertube } from 'youtubei.js/cf-worker';
 import type { SongTrack } from '#lib/types';
 
-// Ensure fetch is bound to globalThis in Workers isolate
-if (typeof globalThis.fetch === 'function') {
-	try {
-		globalThis.fetch = globalThis.fetch.bind(globalThis);
-	} catch {}
-}
-
-let innertubePromise: Promise<Innertube> | null = null;
-
-async function getInnertube(): Promise<Innertube> {
-	if (!innertubePromise) {
-		innertubePromise = Innertube.create().catch((err) => {
-			innertubePromise = null;
-			throw err;
-		});
-	}
-	return innertubePromise;
-}
+// In-memory cache for search queries, radio, and home picks
+const searchCache = new Map<string, { data: SongTrack[]; expiresAt: number }>();
+const radioCache = new Map<string, { data: SongTrack[]; expiresAt: number }>();
+let homePicksCache: { data: { title: string; tracks: SongTrack[] }[]; expiresAt: number } | null = null;
 
 function parseSeconds(durStr?: string | number): number {
 	if (typeof durStr === 'number') return durStr;
@@ -37,98 +22,362 @@ function parseSeconds(durStr?: string | number): number {
 function getBestThumbnail(thumbnails: any, videoId: string): string {
 	if (Array.isArray(thumbnails) && thumbnails.length > 0) {
 		const last = thumbnails[thumbnails.length - 1];
-		if (last?.url) return last.url;
+		if (last?.url) {
+			return last.url.replace(/=w\d+-h\d+.*$/, '=w544-h544-l90-rj');
+		}
 	} else if (thumbnails?.url) {
 		return thumbnails.url;
 	}
 	return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
-// In-memory cache for search queries and home picks
-const searchCache = new Map<string, { data: SongTrack[]; expiresAt: number }>();
-let homePicksCache: { data: { title: string; tracks: SongTrack[] }[]; expiresAt: number } | null = null;
+/**
+ * YouTube Music (WEB_REMIX) song search
+ * Fast, pure HTTP fetch with zero heavy dependencies or CPU limits
+ */
+async function searchMusicYTM(query: string): Promise<SongTrack[]> {
+	try {
+		const res = await fetch('https://music.youtube.com/youtubei/v1/search?prettyPrint=false', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'User-Agent':
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+				Origin: 'https://music.youtube.com',
+				Referer: 'https://music.youtube.com/'
+			},
+			body: JSON.stringify({
+				context: {
+					client: {
+						clientName: 'WEB_REMIX',
+						clientVersion: '1.20231215.01.00',
+						hl: 'en'
+					}
+				},
+				query,
+				params: 'EgWKAQIIAWoSEAQQAxAJEAUQChAVEBAQDhAR' // Filter by songs
+			})
+		});
 
-export async function searchTracks(query: string): Promise<SongTrack[]> {
-	if (!query.trim()) return [];
+		if (!res.ok) return [];
+		const data = (await res.json()) as any;
+		const sectionList =
+			data.contents?.tabbedSearchResultsRenderer?.tabs?.[0]?.tabRenderer?.content
+				?.sectionListRenderer?.contents || [];
+		const tracks: SongTrack[] = [];
 
-	const cacheKey = query.trim().toLowerCase();
+		for (const s of sectionList) {
+			const shelf = s.musicShelfRenderer;
+			if (!shelf || !shelf.contents) continue;
+
+			for (const item of shelf.contents) {
+				const r = item.musicResponsiveListItemRenderer;
+				if (!r) continue;
+
+				const videoId =
+					r.playlistItemData?.videoId ||
+					r.overlay?.musicItemThumbnailOverlayRenderer?.content?.musicPlayButtonRenderer
+						?.playNavigationEndpoint?.watchEndpoint?.videoId ||
+					r.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]
+						?.navigationEndpoint?.watchEndpoint?.videoId;
+
+				if (!videoId) continue;
+
+				const title =
+					r.flexColumns?.[0]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.[0]?.text ||
+					'Unknown Title';
+
+				const col1Runs: any[] =
+					r.flexColumns?.[1]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+				const bulletIndices: number[] = [];
+				col1Runs.forEach((run, idx) => {
+					if (run.text && run.text.trim() === '•') bulletIndices.push(idx);
+				});
+
+				let artist = '';
+				let album: string | undefined = undefined;
+				let durationStr = '';
+
+				if (bulletIndices.length === 0) {
+					artist = col1Runs.map((x) => x.text).join('').trim() || 'Unknown Artist';
+				} else if (bulletIndices.length === 1) {
+					artist =
+						col1Runs
+							.slice(0, bulletIndices[0])
+							.map((x) => x.text)
+							.join('')
+							.trim() || 'Unknown Artist';
+					const secondPart = col1Runs
+						.slice(bulletIndices[0] + 1)
+						.map((x) => x.text)
+						.join('')
+						.trim();
+					if (/^\d+:\d+$/.test(secondPart)) {
+						durationStr = secondPart;
+					} else {
+						album = secondPart;
+					}
+				} else {
+					artist =
+						col1Runs
+							.slice(0, bulletIndices[0])
+							.map((x) => x.text)
+							.join('')
+							.trim() || 'Unknown Artist';
+					album = col1Runs
+						.slice(bulletIndices[0] + 1, bulletIndices[1])
+						.map((x) => x.text)
+						.join('')
+						.trim();
+					durationStr = col1Runs
+						.slice(bulletIndices[bulletIndices.length - 1] + 1)
+						.map((x) => x.text)
+						.join('')
+						.trim();
+				}
+
+				if (!durationStr && r.fixedColumns?.[0]) {
+					durationStr =
+						r.fixedColumns[0].musicResponsiveListItemFixedColumnRenderer?.text?.runs?.[0]
+							?.text || '';
+				}
+
+				const thumbnail = getBestThumbnail(
+					r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails,
+					videoId
+				);
+				const duration = parseSeconds(durationStr);
+
+				tracks.push({
+					videoId,
+					title,
+					artist,
+					album,
+					thumbnail,
+					duration
+				});
+			}
+		}
+		return tracks;
+	} catch (err) {
+		console.warn('YTM search error:', err);
+		return [];
+	}
+}
+
+/**
+ * YouTube Android client fallback search
+ */
+async function searchYouTubeAndroid(query: string): Promise<SongTrack[]> {
+	try {
+		const res = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
+			},
+			body: JSON.stringify({
+				context: {
+					client: {
+						clientName: 'ANDROID',
+						clientVersion: '20.10.38',
+						userAgent: 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+						hl: 'en',
+						gl: 'US'
+					}
+				},
+				query
+			})
+		});
+
+		if (!res.ok) return [];
+		const data = (await res.json()) as any;
+		const sections = data.contents?.sectionListRenderer?.contents || [];
+		const tracks: SongTrack[] = [];
+
+		for (const s of sections) {
+			const items = s.itemSectionRenderer?.contents || [];
+			for (const item of items) {
+				const v = item.compactVideoRenderer || item.videoRenderer;
+				if (!v || !v.videoId) continue;
+
+				const title = v.title?.runs?.[0]?.text || 'Unknown Title';
+				const artist =
+					v.longBylineText?.runs?.[0]?.text ||
+					v.shortBylineText?.runs?.[0]?.text ||
+					'Unknown Artist';
+				const durText = v.lengthText?.runs?.[0]?.text || v.lengthText?.simpleText;
+				const duration = parseSeconds(durText);
+				const thumbnail = getBestThumbnail(v.thumbnail?.thumbnails, v.videoId);
+
+				tracks.push({
+					videoId: v.videoId,
+					title,
+					artist,
+					thumbnail,
+					duration
+				});
+			}
+		}
+		return tracks;
+	} catch (err) {
+		console.warn('Android search error:', err);
+		return [];
+	}
+}
+
+/**
+ * Main search function with multi-tier caching (In-Memory + KV)
+ */
+export async function searchTracks(query: string, kv?: KVNamespace): Promise<SongTrack[]> {
+	const trimmed = query.trim();
+	if (!trimmed) return [];
+
+	const cacheKey = trimmed.toLowerCase();
+
+	// 1. Check in-memory cache
 	const cached = searchCache.get(cacheKey);
 	if (cached && cached.expiresAt > Date.now()) {
 		return cached.data;
 	}
 
-	const yt = await getInnertube();
-	const results = await yt.music.search(query, { type: 'song' });
-
-	const items = results.songs?.contents || results.contents || [];
-	const tracks: SongTrack[] = [];
-
-	for (const item of items) {
-		const videoId = (item as any).id || (item as any).video_id;
-		if (!videoId) continue;
-
-		const title = (item as any).title?.toString() || 'Unknown Title';
-		const artistsArr = (item as any).artists || [];
-		const artist =
-			artistsArr.map((a: any) => a.name).join(', ') ||
-			(item as any).author?.name ||
-			(item as any).author ||
-			'Unknown Artist';
-
-		const thumbnail = getBestThumbnail((item as any).thumbnails || (item as any).thumbnail, videoId);
-		const duration =
-			(item as any).duration?.seconds ?? parseSeconds((item as any).duration?.text);
-
-		tracks.push({
-			videoId,
-			title,
-			artist,
-			thumbnail,
-			duration,
-			album: (item as any).album?.name
-		});
+	// 2. Check KV cache if available
+	if (kv) {
+		try {
+			const kvVal = await kv.get(`search:${cacheKey}`);
+			if (kvVal) {
+				const parsed = JSON.parse(kvVal) as SongTrack[];
+				searchCache.set(cacheKey, { data: parsed, expiresAt: Date.now() + 30 * 60 * 1000 });
+				return parsed;
+			}
+		} catch (err) {
+			console.warn('KV search read error:', err);
+		}
 	}
 
-	// Cache for 30 minutes
-	searchCache.set(cacheKey, { data: tracks, expiresAt: Date.now() + 30 * 60 * 1000 });
+	// 3. Search YouTube Music first, fallback to YouTube Android
+	let tracks = await searchMusicYTM(trimmed);
+	if (tracks.length === 0) {
+		tracks = await searchYouTubeAndroid(trimmed);
+	}
+
+	// 4. Cache results
+	if (tracks.length > 0) {
+		searchCache.set(cacheKey, { data: tracks, expiresAt: Date.now() + 30 * 60 * 1000 });
+		if (kv) {
+			try {
+				await kv.put(`search:${cacheKey}`, JSON.stringify(tracks), { expirationTtl: 7200 });
+			} catch (err) {
+				console.warn('KV search write error:', err);
+			}
+		}
+	}
+
 	return tracks;
 }
 
-export async function getRadioTracks(videoId: string): Promise<SongTrack[]> {
+/**
+ * YouTube Music radio / up-next track recommendations
+ */
+export async function getRadioTracks(videoId: string, kv?: KVNamespace): Promise<SongTrack[]> {
 	if (!videoId) return [];
-	const yt = await getInnertube();
-	const upNext = await yt.music.getUpNext(videoId);
 
-	const items = upNext?.contents || [];
-	const tracks: SongTrack[] = [];
-
-	for (const item of items) {
-		const trackId = (item as any).video_id || (item as any).id || (item as any).endpoint?.payload?.videoId;
-		if (!trackId || trackId === videoId) continue;
-
-		const title = (item as any).title?.toString() || 'Unknown Title';
-		const artistsArr = (item as any).artists || [];
-		const artist =
-			artistsArr.map((a: any) => a.name).join(', ') ||
-			(item as any).author?.name ||
-			(item as any).author ||
-			'Unknown Artist';
-
-		const thumbnail = getBestThumbnail((item as any).thumbnails || (item as any).thumbnail, trackId);
-		const duration =
-			(item as any).duration?.seconds ?? parseSeconds((item as any).duration?.text);
-
-		tracks.push({
-			videoId: trackId,
-			title,
-			artist,
-			thumbnail,
-			duration,
-			album: (item as any).album?.name
-		});
+	// 1. In-memory cache
+	const cached = radioCache.get(videoId);
+	if (cached && cached.expiresAt > Date.now()) {
+		return cached.data;
 	}
 
-	return tracks;
+	// 2. KV cache
+	if (kv) {
+		try {
+			const kvVal = await kv.get(`radio:${videoId}`);
+			if (kvVal) {
+				const parsed = JSON.parse(kvVal) as SongTrack[];
+				radioCache.set(videoId, { data: parsed, expiresAt: Date.now() + 60 * 60 * 1000 });
+				return parsed;
+			}
+		} catch (err) {
+			console.warn('KV radio read error:', err);
+		}
+	}
+
+	try {
+		const res = await fetch('https://music.youtube.com/youtubei/v1/next?prettyPrint=false', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'User-Agent':
+					'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+				Origin: 'https://music.youtube.com',
+				Referer: 'https://music.youtube.com/'
+			},
+			body: JSON.stringify({
+				context: {
+					client: {
+						clientName: 'WEB_REMIX',
+						clientVersion: '1.20231215.01.00',
+						hl: 'en'
+					}
+				},
+				playlistId: `RDAMVM${videoId}`,
+				videoId
+			})
+		});
+
+		if (!res.ok) return [];
+		const data = (await res.json()) as any;
+		const queue =
+			data.contents?.singleColumnMusicWatchNextResultsRenderer?.tabbedRenderer
+				?.watchNextTabbedResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.musicQueueRenderer;
+		const panel = queue?.content?.playlistPanelRenderer;
+		const items = panel?.contents || [];
+		const tracks: SongTrack[] = [];
+
+		for (const item of items) {
+			const v = item.playlistPanelVideoRenderer;
+			if (!v || !v.videoId || v.videoId === videoId) continue;
+
+			const title = v.title?.runs?.[0]?.text || 'Unknown Title';
+			const artist =
+				v.shortBylineText?.runs?.map((r: any) => r.text).join('') || 'Unknown Artist';
+			const durText = v.lengthText?.runs?.[0]?.text;
+			const duration = parseSeconds(durText);
+			const thumbnail = getBestThumbnail(v.thumbnail?.thumbnails, v.videoId);
+
+			let album: string | undefined = undefined;
+			const longRuns: any[] = v.longBylineText?.runs || [];
+			const bulletIdx = longRuns.findIndex((r) => r.text && r.text.includes('•'));
+			if (bulletIdx !== -1 && longRuns[bulletIdx + 1]?.text) {
+				album = longRuns[bulletIdx + 1].text.trim();
+			}
+
+			tracks.push({
+				videoId: v.videoId,
+				title,
+				artist,
+				album,
+				thumbnail,
+				duration
+			});
+		}
+
+		if (tracks.length > 0) {
+			radioCache.set(videoId, { data: tracks, expiresAt: Date.now() + 60 * 60 * 1000 });
+			if (kv) {
+				try {
+					await kv.put(`radio:${videoId}`, JSON.stringify(tracks), { expirationTtl: 86400 });
+				} catch (err) {
+					console.warn('KV radio write error:', err);
+				}
+			}
+		}
+
+		return tracks;
+	} catch (err) {
+		console.warn('Radio fetch error:', err);
+		return [];
+	}
 }
 
 // Instant curated initial picks (0ms latency, zero cold-start delay)
@@ -262,13 +511,15 @@ const SEEDED_HOME_PICKS: { title: string; tracks: SongTrack[] }[] = [
 	}
 ];
 
-export async function getHomePicks(kv?: KVNamespace): Promise<{ title: string; tracks: SongTrack[] }[]> {
-	// 1. Check in-memory cache (0ms)
+export async function getHomePicks(
+	kv?: KVNamespace
+): Promise<{ title: string; tracks: SongTrack[] }[]> {
+	// 1. In-memory cache (0ms)
 	if (homePicksCache && homePicksCache.expiresAt > Date.now()) {
 		return homePicksCache.data;
 	}
 
-	// 2. Check KV cache
+	// 2. KV cache
 	if (kv) {
 		try {
 			const kvVal = await kv.get('home_picks_v1');
@@ -282,41 +533,6 @@ export async function getHomePicks(kv?: KVNamespace): Promise<{ title: string; t
 		}
 	}
 
-	// 3. Immediately return pre-seeded list for instant 0ms home page render!
-	// In the background, refresh from YouTube and store into cache
-	const initialData = SEEDED_HOME_PICKS;
-
-	// Populate in-memory cache immediately so repeat calls are instant
-	homePicksCache = { data: initialData, expiresAt: Date.now() + 60 * 1000 };
-
-	// Asynchronously fetch fresh data in background without blocking response
-	(async () => {
-		try {
-			const queries = [
-				{ title: 'Top Hits & Trending', query: 'Top Tamil Hits 2026' },
-				{ title: 'Melody & Soul', query: 'Anirudh AR Rahman Melody Hits' },
-				{ title: 'Chill & Acoustic', query: 'Acoustic Pop Indie Hits' }
-			];
-			const fresh = await Promise.allSettled(
-				queries.map(async (q) => ({
-					title: q.title,
-					tracks: (await searchTracks(q.query)).slice(0, 10)
-				}))
-			);
-			const valid = fresh
-				.filter((r): r is PromiseFulfilledResult<{ title: string; tracks: SongTrack[] }> => r.status === 'fulfilled' && r.value.tracks.length > 0)
-				.map((r) => r.value);
-
-			if (valid.length > 0) {
-				homePicksCache = { data: valid, expiresAt: Date.now() + 6 * 3600 * 1000 };
-				if (kv) {
-					await kv.put('home_picks_v1', JSON.stringify(valid), { expirationTtl: 21600 });
-				}
-			}
-		} catch (err) {
-			console.warn('Background home refresh error:', err);
-		}
-	})();
-
-	return initialData;
+	// 3. Fall back to curated pre-seeded list for instant render
+	return SEEDED_HOME_PICKS;
 }

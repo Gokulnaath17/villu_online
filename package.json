@@ -31,7 +31,6 @@
 		"#lib/*": "./src/lib/*"
 	},
 	"dependencies": {
-		"@lucide/svelte": "^1.66.0",
-		"youtubei.js": "^18.3.0"
+		"@lucide/svelte": "^1.66.0"
 	}
 }
