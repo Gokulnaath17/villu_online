@@ -137,6 +137,7 @@
 			<div
 				class="absolute right-0 top-full mt-1 w-48 rounded-xl bg-zinc-900 border border-white/10 shadow-2xl py-1.5 z-40 text-xs text-zinc-200"
 				onclick={(e) => e.stopPropagation()}
+				onkeydown={(e) => e.stopPropagation()}
 				role="menu"
 				tabindex="0"
 			>

@@ -21,13 +21,7 @@
 	"kv_namespaces": [
 		{
 			"binding": "STREAM_CACHE",
-			"id": "villu-stream-cache-local"
-		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "ART_BUCKET",
-			"bucket_name": "villu-art"
+			"id": "18f6eff88a0d4892a0f9bde1558d5843"
 		}
 	],
 	"workers_dev": true,
