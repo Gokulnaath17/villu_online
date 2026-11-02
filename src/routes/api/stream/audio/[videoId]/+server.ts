@@ -1,14 +1,15 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { resolveStream } from '#lib/server/stream';
+import { getBindings } from '#lib/server/cf';
 
 export const GET: RequestHandler = async ({ params, platform, request }) => {
 	const { videoId } = params;
 	if (!videoId) throw error(400, 'Missing videoId');
 
-	const kv = platform?.env?.STREAM_CACHE;
+	const { STREAM_CACHE } = getBindings(platform);
 	try {
-		const stream = await resolveStream(videoId, kv);
+		const stream = await resolveStream(videoId, STREAM_CACHE);
 
 		// Extract Range header from browser request (crucial for <audio> elements)
 		const range = request.headers.get('range') || 'bytes=0-';
@@ -27,7 +28,7 @@ export const GET: RequestHandler = async ({ params, platform, request }) => {
 		if (!upstreamRes.ok && upstreamRes.status !== 206) {
 			console.warn(`Upstream audio fetch status: ${upstreamRes.status} for ${videoId}`);
 			// If upstream returned error (e.g. 403 expired), retry with fresh stream resolution
-			const freshStream = await resolveStream(videoId, kv, true);
+			const freshStream = await resolveStream(videoId, STREAM_CACHE, true);
 			const retryRes = await fetch(freshStream.url, {
 				headers: upstreamHeaders,
 				redirect: 'follow'

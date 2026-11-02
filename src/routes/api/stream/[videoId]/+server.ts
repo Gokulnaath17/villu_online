@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { resolveStream } from '#lib/server/stream';
+import { getBindings } from '#lib/server/cf';
 
 export const GET: RequestHandler = async ({ params, platform, url }) => {
 	const { videoId } = params;
@@ -9,10 +10,10 @@ export const GET: RequestHandler = async ({ params, platform, url }) => {
 	}
 
 	const forceRefresh = url.searchParams.get('refresh') === 'true';
-	const kv = platform?.env?.STREAM_CACHE;
+	const { STREAM_CACHE } = getBindings(platform);
 
 	try {
-		const stream = await resolveStream(videoId, kv, forceRefresh);
+		const stream = await resolveStream(videoId, STREAM_CACHE, forceRefresh);
 		return json(stream);
 	} catch (err: any) {
 		console.error(`Error resolving stream for ${videoId}:`, err);
