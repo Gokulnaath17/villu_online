@@ -5,7 +5,6 @@ export type EngineEventCallbacks = {
 	onError: (error: string) => void;
 	onPreloadNeeded: () => void;
 };
-
 export class AudioEngine {
 	private audioA: HTMLAudioElement;
 	private audioB: HTMLAudioElement;
