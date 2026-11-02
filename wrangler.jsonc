@@ -15,7 +15,7 @@
 		{
 			"binding": "DB",
 			"database_name": "villu-db",
-			"database_id": "villu-db-local"
+			"database_id": "f3d08012-f720-4ef5-93cd-739f4a026b27"
 		}
 	],
 	"kv_namespaces": [
