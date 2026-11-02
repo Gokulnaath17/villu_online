@@ -6,4 +6,5 @@ export function getBindings(platform?: App.Platform) {
 		DB: e.DB,
 		STREAM_CACHE: e.STREAM_CACHE
 	};
+	
 }
