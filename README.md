@@ -2,7 +2,8 @@
 
 A web-based music streaming player for personal use, streaming directly from YouTube Music. No downloads, gapless playback, playlists, and dark minimalist UI.
 
-Built with SvelteKit (Svelte 5) and deployed on Cloudflare Workers / Pages.
+- **Live URL**: [https://villu-online.gokulnaatheswaran.workers.dev](https://villu-online.gokulnaatheswaran.workers.dev)
+- **Stack**: SvelteKit (Svelte 5 Runes) + Tailwind CSS v4 on Cloudflare Workers (D1 + KV).
 
 ---
 
