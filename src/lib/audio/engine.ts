@@ -44,6 +44,33 @@ export class AudioEngine {
 
 	private setupAudioElement(el: HTMLAudioElement, tag: 'A' | 'B') {
 		el.preload = 'auto';
+		el.setAttribute('playsinline', 'true');
+		el.setAttribute('webkit-playsinline', 'true');
+		el.setAttribute('x-webkit-airplay', 'allow');
+
+		// Ensure audio elements are attached to the DOM so the browser doesn't discard them when backgrounded
+		try {
+			if (typeof document !== 'undefined' && document.body) {
+				let container = document.getElementById('villu-audio-container');
+				if (!container) {
+					container = document.createElement('div');
+					container.id = 'villu-audio-container';
+					container.style.position = 'fixed';
+					container.style.width = '0px';
+					container.style.height = '0px';
+					container.style.opacity = '0';
+					container.style.pointerEvents = 'none';
+					container.style.zIndex = '-9999';
+					container.setAttribute('aria-hidden', 'true');
+					document.body.appendChild(container);
+				}
+				if (!container.contains(el)) {
+					container.appendChild(el);
+				}
+			}
+		} catch (e) {
+			console.warn('Audio DOM mounting error:', e);
+		}
 
 		el.addEventListener('ended', () => {
 			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
@@ -69,10 +96,22 @@ export class AudioEngine {
 			}
 		});
 
+		// timeupdate is native and reliably triggers even when screen is off / tab in background
 		el.addEventListener('timeupdate', () => {
 			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
 				if (!el.paused && el.currentTime > 0) {
 					this.callbacks.onLoading(false);
+				}
+				const pos = el.currentTime;
+				const dur = el.duration;
+				if (dur > 0) {
+					this.callbacks.onTimeUpdate(pos, dur);
+
+					// Preload next track trigger (20s lookahead window)
+					if (dur > 25 && dur - pos < 20 && !this.preloadTriggered) {
+						this.preloadTriggered = true;
+						this.callbacks.onPreloadNeeded();
+					}
 				}
 			}
 		});
@@ -91,12 +130,13 @@ export class AudioEngine {
 	private startRafLoop() {
 		const tick = () => {
 			const el = this.active;
-			if (el && !el.paused && el.duration) {
+			// Only drive progress from rAF when page is visible (when screen is on)
+			if (el && !el.paused && el.duration && typeof document !== 'undefined' && !document.hidden) {
 				const pos = el.currentTime;
 				const dur = el.duration;
 				this.callbacks.onTimeUpdate(pos, dur);
 
-				// Preload next track trigger (20s lookahead window from MECHANISM.md §5.4)
+				// Preload next track trigger (20s lookahead window)
 				if (dur > 25 && dur - pos < 20 && !this.preloadTriggered) {
 					this.preloadTriggered = true;
 					this.callbacks.onPreloadNeeded();
@@ -121,13 +161,7 @@ export class AudioEngine {
 			this.activeIsA = !this.activeIsA;
 			this.preloadedVideoId = null;
 
-			// Fade out previous audio
-			this.fadeVolume(oldActive, oldActive.volume, 0, 150).then(() => {
-				oldActive.pause();
-				oldActive.currentTime = 0;
-			});
-
-			// Fade in new audio
+			// Start playing new active audio FIRST to preserve uninterrupted media session in background
 			newActive.volume = this.isMuted ? 0 : this.volume;
 			if (startPos > 0 && newActive.duration) {
 				newActive.currentTime = startPos;
@@ -135,15 +169,21 @@ export class AudioEngine {
 			try {
 				await newActive.play();
 				this.callbacks.onLoading(false);
+
+				// Immediately pause and reset old audio
+				oldActive.pause();
+				oldActive.currentTime = 0;
+				oldActive.src = '';
 				return;
 			} catch (err: any) {
 				console.warn('Preloaded play failed, falling back to fresh load:', err);
+				this.activeIsA = !this.activeIsA;
 			}
 		}
 
 		// Otherwise load freshly into active audio
 		const cur = this.active;
-		cur.pause();
+		// Do NOT call cur.pause() beforehand - setting cur.src preserves the active playback grant
 		cur.src = streamUrl;
 		cur.volume = this.isMuted ? 0 : this.volume;
 

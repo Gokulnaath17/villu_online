@@ -6,6 +6,8 @@ export class MediaSessionManager {
 	private onNextCallback: () => void = () => {};
 	private onPreviousCallback: () => void = () => {};
 	private onSeekCallback: (pos: number) => void = () => {};
+	private onSeekForwardCallback: (offset: number) => void = () => {};
+	private onSeekBackwardCallback: (offset: number) => void = () => {};
 
 	constructor(callbacks: {
 		onPlay: () => void;
@@ -13,12 +15,16 @@ export class MediaSessionManager {
 		onNext: () => void;
 		onPrevious: () => void;
 		onSeek: (pos: number) => void;
+		onSeekForward?: (offset: number) => void;
+		onSeekBackward?: (offset: number) => void;
 	}) {
 		this.onPlayCallback = callbacks.onPlay;
 		this.onPauseCallback = callbacks.onPause;
 		this.onNextCallback = callbacks.onNext;
 		this.onPreviousCallback = callbacks.onPrevious;
 		this.onSeekCallback = callbacks.onSeek;
+		this.onSeekForwardCallback = callbacks.onSeekForward || ((off) => this.onSeekCallback(off));
+		this.onSeekBackwardCallback = callbacks.onSeekBackward || ((off) => this.onSeekCallback(-off));
 
 		this.initHandlers();
 	}
@@ -28,6 +34,7 @@ export class MediaSessionManager {
 
 		navigator.mediaSession.setActionHandler('play', () => this.onPlayCallback());
 		navigator.mediaSession.setActionHandler('pause', () => this.onPauseCallback());
+		navigator.mediaSession.setActionHandler('stop', () => this.onPauseCallback());
 		navigator.mediaSession.setActionHandler('previoustrack', () => this.onPreviousCallback());
 		navigator.mediaSession.setActionHandler('nexttrack', () => this.onNextCallback());
 		navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -37,12 +44,11 @@ export class MediaSessionManager {
 		});
 		navigator.mediaSession.setActionHandler('seekforward', (details) => {
 			const offset = details.seekOffset || 10;
-			// handoff to caller
-			this.onSeekCallback(-offset); // negative flag convention handled in player
+			this.onSeekForwardCallback(offset);
 		});
 		navigator.mediaSession.setActionHandler('seekbackward', (details) => {
 			const offset = details.seekOffset || 10;
-			this.onSeekCallback(-offset);
+			this.onSeekBackwardCallback(offset);
 		});
 	}
 

@@ -84,13 +84,14 @@ async function resolveViaInnertubeDirect(videoId: string): Promise<StreamData | 
 
 		if (audioFormats.length === 0) return null;
 
-		// Prioritize progressive format itag 18 (MP4 with AAC audio) for flawless web range seeking,
-		// then fallback to itag 140 (AAC) or itag 251 (Opus)
+		// Prioritize pure audio streams (itag 140 AAC or itag 251 Opus)
+		// Pure audio streams are permitted to play in the background with screen off on mobile browsers!
 		const preferred =
-			formats.find((f) => f.itag === 18 && f.url) ||
 			audioFormats.find((f) => f.itag === 140 && f.url) ||
 			audioFormats.find((f) => f.itag === 251 && f.url) ||
-			audioFormats[0];
+			audioFormats[0] ||
+			formats.find((f) => f.itag === 18 && f.url) ||
+			formats[0];
 
 		const codec = preferred.mimeType?.includes('opus')
 			? 'opus'
@@ -127,7 +128,8 @@ export async function resolveStream(
 				const cachedStr = await kv.get(`stream:${videoId}`);
 				if (cachedStr) {
 					const cached = JSON.parse(cachedStr) as StreamData;
-					if (!isStreamExpired(cached.url)) {
+					// Ignore legacy itag 18 video cache to ensure pure background audio playback
+					if (!isStreamExpired(cached.url) && cached.itag !== 18) {
 						return { ...cached, fromCache: true };
 					}
 				}
@@ -136,7 +138,7 @@ export async function resolveStream(
 			}
 		} else {
 			const mem = memoryStreamCache.get(videoId);
-			if (mem && !isStreamExpired(mem.url)) {
+			if (mem && !isStreamExpired(mem.url) && mem.itag !== 18) {
 				return { ...mem, fromCache: true };
 			}
 		}

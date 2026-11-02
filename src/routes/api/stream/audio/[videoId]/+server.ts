@@ -48,7 +48,11 @@ export const GET: RequestHandler = async ({ params, platform, request }) => {
 
 function makeAudioResponse(res: Response): Response {
 	const headers = new Headers();
-	headers.set('Content-Type', res.headers.get('content-type') || 'audio/mp4');
+	let contentType = res.headers.get('content-type') || 'audio/mp4';
+	if (contentType.startsWith('video/')) {
+		contentType = 'audio/mp4';
+	}
+	headers.set('Content-Type', contentType);
 	headers.set('Accept-Ranges', 'bytes');
 	headers.set('Access-Control-Allow-Origin', '*');
 	headers.set('Cache-Control', 'public, max-age=14400');

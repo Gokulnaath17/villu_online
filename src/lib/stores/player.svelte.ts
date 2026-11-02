@@ -85,11 +85,21 @@ class PlayerStore {
 			onPause: () => this.pause(),
 			onNext: () => this.skipNext(),
 			onPrevious: () => this.skipPrevious(),
-			onSeek: (pos) => {
-				if (pos < 0) {
-					this.seek(this._position + pos);
-				} else {
-					this.seek(pos);
+			onSeek: (pos) => this.seek(pos),
+			onSeekForward: (offset) => this.seek(this._position + offset),
+			onSeekBackward: (offset) => this.seek(Math.max(0, this._position - offset))
+		});
+
+		// Listen to visibilitychange to sync position and prevent background stalls
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden && this.engine) {
+				const pos = this.engine.position;
+				const dur = this.engine.duration;
+				if (pos > 0) this._position = pos;
+				if (dur > 0) this._duration = dur;
+				if (this._isPlaying && !this.engine.isPlaying) {
+					// In case browser momentarily paused on lock, attempt seamless resume
+					this.engine.resume().catch(() => {});
 				}
 			}
 		});
