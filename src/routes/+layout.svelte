@@ -15,14 +15,20 @@
 	let { children }: LayoutProps = $props();
 
 	let isAuthPage = $derived(page.url.pathname === '/login');
+	let user = $derived(page.data.user);
+
+	let hasInitialized = false;
+	$effect(() => {
+		if (!isAuthPage && user && !hasInitialized) {
+			hasInitialized = true;
+			playerStore.init();
+			libraryStore.loadAll();
+		}
+	});
 
 	onMount(() => {
-		if (page.url.pathname === '/login') return;
-
-		playerStore.init();
-		libraryStore.loadAll();
-
 		function handleKeyDown(e: KeyboardEvent) {
+			if (page.url.pathname === '/login') return;
 			const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
 			if (tag === 'input' || tag === 'textarea' || (e.target as HTMLElement)?.isContentEditable) {
 				return;

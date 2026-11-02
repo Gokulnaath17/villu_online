@@ -22,6 +22,7 @@
 	});
 
 	onMount(async () => {
+		libraryStore.loadHistory();
 		try {
 			const res = await fetch('/api/home');
 			if (res.ok) {

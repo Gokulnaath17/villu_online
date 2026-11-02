@@ -16,53 +16,52 @@ export const GET: RequestHandler = async ({ params, platform, request, locals })
 	try {
 		const stream = await resolveStream(videoId, STREAM_CACHE);
 
-		// Extract Range header from browser request (crucial for <audio> elements)
-		const range = request.headers.get('range') || 'bytes=0-';
+		// Only forward Range header if client actually requested one
+		const clientRange = request.headers.get('range');
 
 		const upstreamHeaders: Record<string, string> = {
 			'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
-			'Accept': '*/*',
-			'Range': range
+			'Accept': '*/*'
 		};
+		if (clientRange) {
+			upstreamHeaders['Range'] = clientRange;
+		}
 
-		const upstreamRes = await fetch(stream.url, {
+		let upstreamRes = await fetch(stream.url, {
 			headers: upstreamHeaders,
 			redirect: 'follow'
 		});
 
-		if (!upstreamRes.ok && upstreamRes.status !== 206) {
-			console.warn(`Upstream audio fetch status: ${upstreamRes.status} for ${videoId}`);
+		if (!upstreamRes.ok) {
+			console.warn(`Upstream audio fetch status: ${upstreamRes.status} for ${videoId}, retrying fresh...`);
 			// If upstream returned error (e.g. 403 expired), retry with fresh stream resolution
 			const freshStream = await resolveStream(videoId, STREAM_CACHE, true);
-			const retryRes = await fetch(freshStream.url, {
+			upstreamRes = await fetch(freshStream.url, {
 				headers: upstreamHeaders,
 				redirect: 'follow'
 			});
-			if (!retryRes.ok && retryRes.status !== 206) {
-				throw error(retryRes.status, 'Upstream stream unavailable');
+			if (!upstreamRes.ok) {
+				throw error(upstreamRes.status, 'Upstream stream unavailable');
 			}
-			return makeAudioResponse(retryRes);
 		}
 
-		return makeAudioResponse(upstreamRes);
+		return makeAudioResponse(upstreamRes, clientRange);
 	} catch (err: any) {
 		console.error('Audio stream proxy error:', err);
 		throw error(500, err?.message || 'Failed to stream audio');
 	}
 };
 
-function makeAudioResponse(res: Response): Response {
+function makeAudioResponse(res: Response, requestedRange: string | null): Response {
 	const headers = new Headers();
-	let contentType = res.headers.get('content-type') || 'audio/mp4';
-	if (contentType.startsWith('video/')) {
-		contentType = 'audio/mp4';
-	}
+	// Preserve upstream content-type so browser media demuxers handle container formats accurately
+	const contentType = res.headers.get('content-type') || 'video/mp4';
 	headers.set('Content-Type', contentType);
 	headers.set('Accept-Ranges', 'bytes');
 	headers.set('Cache-Control', 'private, max-age=14400');
 
 	const contentRange = res.headers.get('content-range');
-	if (contentRange) {
+	if (contentRange && requestedRange) {
 		headers.set('Content-Range', contentRange);
 	}
 
@@ -71,8 +70,14 @@ function makeAudioResponse(res: Response): Response {
 		headers.set('Content-Length', contentLength);
 	}
 
+	// Status code MUST be 206 only if range was requested by client; otherwise 200
+	let status = res.status;
+	if (!requestedRange && status === 206) {
+		status = 200;
+	}
+
 	return new Response(res.body, {
-		status: res.status,
+		status,
 		headers
 	});
 }

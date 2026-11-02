@@ -64,7 +64,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event);
 
 	// 5. Inject defense-in-depth security headers
-	response.headers.set('X-Content-Type-Options', 'nosniff');
+	// Media stream proxy is excluded from nosniff so browser media decoders can handle MP4/WebM containers freely
+	if (!pathname.startsWith('/api/stream/audio/')) {
+		response.headers.set('X-Content-Type-Options', 'nosniff');
+	}
 	response.headers.set('X-Frame-Options', 'DENY');
 	response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
 	response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');

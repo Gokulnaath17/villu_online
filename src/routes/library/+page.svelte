@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { libraryStore } from '#lib/stores/library.svelte';
 	import { playerStore } from '#lib/stores/player.svelte';
 	import TrackCard from '#lib/components/TrackCard.svelte';
@@ -11,6 +12,10 @@
 	let likedTracks = $derived(libraryStore.likedTracks);
 	let playlists = $derived(libraryStore.playlists);
 	let history = $derived(libraryStore.history);
+
+	onMount(() => {
+		libraryStore.loadAll();
+	});
 
 	function playAllLiked() {
 		if (likedTracks.length > 0) {
