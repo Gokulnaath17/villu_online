@@ -74,24 +74,26 @@ async function resolveViaInnertubeDirect(videoId: string): Promise<StreamData | 
 		}
 
 		const formats: any[] = [
-			...(data.streamingData?.adaptiveFormats || []),
-			...(data.streamingData?.formats || [])
+			...(data.streamingData?.formats || []),
+			...(data.streamingData?.adaptiveFormats || [])
 		];
 
 		const audioFormats = formats
 			.filter((f) => f.mimeType && f.mimeType.startsWith('audio/') && f.url)
 			.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
 
-		if (audioFormats.length === 0) return null;
-
-		// Prioritize pure audio streams (itag 140 AAC or itag 251 Opus)
-		// Pure audio streams are permitted to play in the background with screen off on mobile browsers!
+		// Prioritize progressive format itag 18 (MP4 with AAC audio track).
+		// Progressive streams include ratebypass=yes and allow arbitrary range requests
+		// without YouTube googlevideo CDN throwing 403 Forbidden on chunk/unbounded boundaries.
 		const preferred =
+			formats.find((f) => f.itag === 18 && f.url) ||
+			formats.find((f) => f.itag === 22 && f.url) ||
 			audioFormats.find((f) => f.itag === 140 && f.url) ||
 			audioFormats.find((f) => f.itag === 251 && f.url) ||
 			audioFormats[0] ||
-			formats.find((f) => f.itag === 18 && f.url) ||
-			formats[0];
+			formats.find((f) => f.url);
+
+		if (!preferred || !preferred.url) return null;
 
 		const codec = preferred.mimeType?.includes('opus')
 			? 'opus'
@@ -128,8 +130,8 @@ export async function resolveStream(
 				const cachedStr = await kv.get(`stream:${videoId}`);
 				if (cachedStr) {
 					const cached = JSON.parse(cachedStr) as StreamData;
-					// Ignore legacy itag 18 video cache to ensure pure background audio playback
-					if (!isStreamExpired(cached.url) && cached.itag !== 18) {
+					// Only use unexpired cached streams and avoid broken adaptive streams (itag 140/251)
+					if (!isStreamExpired(cached.url) && cached.itag !== 140 && cached.itag !== 251) {
 						return { ...cached, fromCache: true };
 					}
 				}
@@ -138,7 +140,7 @@ export async function resolveStream(
 			}
 		} else {
 			const mem = memoryStreamCache.get(videoId);
-			if (mem && !isStreamExpired(mem.url) && mem.itag !== 18) {
+			if (mem && !isStreamExpired(mem.url) && mem.itag !== 140 && mem.itag !== 251) {
 				return { ...mem, fromCache: true };
 			}
 		}
