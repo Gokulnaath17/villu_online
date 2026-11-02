@@ -93,3 +93,10 @@ CREATE TABLE IF NOT EXISTS history (
 
 CREATE INDEX IF NOT EXISTS idx_history_user_time ON history(user_id, played_at DESC);
 CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos ON playlist_tracks(playlist_id, position ASC);
+
+-- System Settings (e.g. YouTube Cookie for unconstrained background audio)
+CREATE TABLE IF NOT EXISTS system_settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT,
+    updated_at INTEGER DEFAULT (unixepoch())
+);

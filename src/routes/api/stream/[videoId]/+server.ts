@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { resolveStream } from '#lib/server/stream';
 import { getBindings } from '#lib/server/cf';
 import { isValidVideoId } from '#lib/server/db';
+import { getSystemSetting } from '#lib/server/admin';
 
 export const GET: RequestHandler = async ({ params, platform, url, locals }) => {
 	if (!locals.user) throw error(401, 'Unauthorized');
@@ -13,10 +14,12 @@ export const GET: RequestHandler = async ({ params, platform, url, locals }) => 
 	}
 
 	const forceRefresh = url.searchParams.get('refresh') === 'true';
-	const { STREAM_CACHE, YOUTUBE_COOKIE } = getBindings(platform);
+	const { DB, STREAM_CACHE, YOUTUBE_COOKIE } = getBindings(platform);
+	const dbCookie = await getSystemSetting(DB, 'youtube_cookie');
+	const effectiveCookie = YOUTUBE_COOKIE || dbCookie || undefined;
 
 	try {
-		const stream = await resolveStream(videoId, STREAM_CACHE, forceRefresh, YOUTUBE_COOKIE);
+		const stream = await resolveStream(videoId, STREAM_CACHE, forceRefresh, effectiveCookie);
 		return json(stream, {
 			headers: {
 				'Cache-Control': 'private, max-age=14400'

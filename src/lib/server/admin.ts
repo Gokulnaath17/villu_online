@@ -378,3 +378,41 @@ export async function listSystemListeningLogs(
 	}
 }
 
+export async function getSystemSetting(db: D1Database | undefined, key: string): Promise<string | null> {
+	if (!db) return null;
+	try {
+		const res = await db.prepare('SELECT value FROM system_settings WHERE key = ? LIMIT 1').bind(key).first<{ value: string }>();
+		return res?.value ?? null;
+	} catch (err) {
+		console.warn(`getSystemSetting error for ${key}:`, err);
+		return null;
+	}
+}
+
+export async function setSystemSetting(
+	db: D1Database | undefined,
+	key: string,
+	value: string,
+	adminUser: { id: string; username: string }
+): Promise<void> {
+	if (!db) return;
+	try {
+		const now = Math.floor(Date.now() / 1000);
+		await db
+			.prepare('INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
+			.bind(key, value, now)
+			.run();
+
+		await createAuditLog(db, {
+			userId: adminUser.id,
+			username: adminUser.username,
+			action: 'UPDATE_SETTING',
+			details: `Updated setting: ${key}`
+		});
+	} catch (err) {
+		console.error(`setSystemSetting error for ${key}:`, err);
+		throw err;
+	}
+}
+
+

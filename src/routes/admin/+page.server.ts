@@ -9,7 +9,9 @@ import {
 	listAuditLogs,
 	listActiveSessions,
 	revokeSessionById,
-	listSystemListeningLogs
+	listSystemListeningLogs,
+	getSystemSetting,
+	setSystemSetting
 } from '#lib/server/admin';
 
 export const load: ServerLoad = async ({ locals, platform }) => {
@@ -21,20 +23,25 @@ export const load: ServerLoad = async ({ locals, platform }) => {
 		throw error(403, 'Forbidden: Admin access required');
 	}
 
-	const { DB } = getBindings(platform);
-	const [users, auditLogs, activeSessions, listeningLogs] = await Promise.all([
+	const { DB, YOUTUBE_COOKIE } = getBindings(platform);
+	const [users, auditLogs, activeSessions, listeningLogs, dbCookie] = await Promise.all([
 		listAllUsers(DB),
 		listAuditLogs(DB, 50),
 		listActiveSessions(DB, locals.session?.id),
-		listSystemListeningLogs(DB, 30)
+		listSystemListeningLogs(DB, 30),
+		getSystemSetting(DB, 'youtube_cookie')
 	]);
+
+	const effectiveCookie = dbCookie || YOUTUBE_COOKIE || '';
 
 	return {
 		users,
 		auditLogs,
 		activeSessions,
 		listeningLogs,
-		currentUserId: locals.user.id
+		currentUserId: locals.user.id,
+		hasCustomCookie: !!effectiveCookie,
+		cookiePreview: effectiveCookie ? `${effectiveCookie.slice(0, 15)}...${effectiveCookie.slice(-10)}` : null
 	};
 };
 
@@ -163,6 +170,41 @@ export const actions: Actions = {
 			return { success: true, message: 'Session revoked.' };
 		} catch (err: any) {
 			return fail(400, { error: err.message || 'Failed to revoke session' });
+		}
+	},
+
+	updateStreamCookie: async ({ request, locals, platform }) => {
+		if (!locals.user || locals.user.role !== 'admin') {
+			throw error(403, 'Unauthorized');
+		}
+
+		const data = await request.formData();
+		const cookie = (data.get('cookie') as string)?.trim();
+
+		if (!cookie) {
+			return fail(400, { error: 'Cookie content is required' });
+		}
+
+		const { DB } = getBindings(platform);
+		try {
+			await setSystemSetting(DB, 'youtube_cookie', cookie, locals.user);
+			return { success: true, message: 'YouTube streaming cookie saved. Pure audio stream extraction is active!' };
+		} catch (err: any) {
+			return fail(400, { error: err.message || 'Failed to save streaming cookie' });
+		}
+	},
+
+	clearStreamCookie: async ({ locals, platform }) => {
+		if (!locals.user || locals.user.role !== 'admin') {
+			throw error(403, 'Unauthorized');
+		}
+
+		const { DB } = getBindings(platform);
+		try {
+			await setSystemSetting(DB, 'youtube_cookie', '', locals.user);
+			return { success: true, message: 'Streaming cookie cleared.' };
+		} catch (err: any) {
+			return fail(400, { error: err.message || 'Failed to clear cookie' });
 		}
 	}
 };

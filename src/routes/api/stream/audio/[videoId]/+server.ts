@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import { resolveStream } from '#lib/server/stream';
 import { getBindings } from '#lib/server/cf';
 import { isValidVideoId } from '#lib/server/db';
+import { getSystemSetting } from '#lib/server/admin';
 
 export const GET: RequestHandler = async ({ params, platform, request, locals }) => {
 	if (!locals.user) throw error(401, 'Unauthorized');
@@ -12,9 +13,12 @@ export const GET: RequestHandler = async ({ params, platform, request, locals })
 		throw error(400, 'Invalid videoId format');
 	}
 
-	const { STREAM_CACHE, YOUTUBE_COOKIE } = getBindings(platform);
+	const { DB, STREAM_CACHE, YOUTUBE_COOKIE } = getBindings(platform);
+	const dbCookie = await getSystemSetting(DB, 'youtube_cookie');
+	const effectiveCookie = YOUTUBE_COOKIE || dbCookie || undefined;
+
 	try {
-		const stream = await resolveStream(videoId, STREAM_CACHE, false, YOUTUBE_COOKIE);
+		const stream = await resolveStream(videoId, STREAM_CACHE, false, effectiveCookie);
 
 		// Only forward Range header if client actually requested one
 		const clientRange = request.headers.get('range');
@@ -35,7 +39,7 @@ export const GET: RequestHandler = async ({ params, platform, request, locals })
 		if (!upstreamRes.ok) {
 			console.warn(`Upstream audio fetch status: ${upstreamRes.status} for ${videoId}, retrying fresh...`);
 			// If upstream returned error (e.g. 403 expired), retry with fresh stream resolution
-			const freshStream = await resolveStream(videoId, STREAM_CACHE, true, YOUTUBE_COOKIE);
+			const freshStream = await resolveStream(videoId, STREAM_CACHE, true, effectiveCookie);
 			upstreamRes = await fetch(freshStream.url, {
 				headers: upstreamHeaders,
 				redirect: 'follow'

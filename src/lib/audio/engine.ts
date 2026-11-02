@@ -73,6 +73,7 @@ export class AudioEngine {
 	private pendingVideo: { videoId: string; startPos: number } | null = null;
 	private cachedDuration: number = 0;
 	private cachedPosition: number = 0;
+	private wakeLock: any = null;
 
 	constructor(callbacks: EngineEventCallbacks) {
 		this.callbacks = callbacks;
@@ -80,8 +81,38 @@ export class AudioEngine {
 		if (typeof window !== 'undefined') {
 			this.setupDom();
 			this.setupSilentAudio();
+			this.setupVisibilityListener();
 			this.initPlayer();
 		}
+	}
+
+	private setupVisibilityListener() {
+		if (typeof document === 'undefined') return;
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden && this.isPlayingState) {
+				this.acquireWakeLock();
+			}
+		});
+	}
+
+	private async acquireWakeLock() {
+		try {
+			if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !this.wakeLock) {
+				this.wakeLock = await (navigator as any).wakeLock.request('screen');
+				this.wakeLock.addEventListener?.('release', () => {
+					this.wakeLock = null;
+				});
+			}
+		} catch {}
+	}
+
+	private releaseWakeLock() {
+		try {
+			if (this.wakeLock) {
+				this.wakeLock.release().catch(() => {});
+				this.wakeLock = null;
+			}
+		} catch {}
 	}
 
 	private setupDom() {
@@ -171,11 +202,13 @@ export class AudioEngine {
 							this.callbacks.onLoading(false);
 							this.startProgressTicker();
 							this.startSilentAudio();
+							this.acquireWakeLock();
 						} else if (state === 2) {
 							// PAUSED
 							this.isPlayingState = false;
 							this.stopProgressTicker();
 							this.pauseSilentAudio();
+							this.releaseWakeLock();
 						} else if (state === 3) {
 							// BUFFERING
 							this.callbacks.onLoading(true);
@@ -184,6 +217,7 @@ export class AudioEngine {
 							this.isPlayingState = false;
 							this.stopProgressTicker();
 							this.pauseSilentAudio();
+							this.releaseWakeLock();
 							this.callbacks.onEnded();
 						}
 					},
@@ -324,6 +358,7 @@ export class AudioEngine {
 		this.isPlayingState = false;
 		this.stopProgressTicker();
 		this.pauseSilentAudio();
+		this.releaseWakeLock();
 	}
 
 	public async resume(): Promise<void> {
@@ -332,6 +367,7 @@ export class AudioEngine {
 			this.isPlayingState = true;
 			this.startProgressTicker();
 			this.startSilentAudio();
+			this.acquireWakeLock();
 		} else if (this.currentVideoId) {
 			this.loadAndStartVideo(this.currentVideoId, this.cachedPosition);
 		}
@@ -382,6 +418,7 @@ export class AudioEngine {
 	public destroy(): void {
 		this.stopProgressTicker();
 		this.pauseSilentAudio();
+		this.releaseWakeLock();
 		if (this.ytPlayer && typeof this.ytPlayer.destroy === 'function') {
 			try {
 				this.ytPlayer.destroy();
