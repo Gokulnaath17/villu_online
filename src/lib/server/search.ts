@@ -1,6 +1,16 @@
 import type { SongTrack } from '#lib/types';
 
-// In-memory cache for search queries, radio, and home picks
+// In-memory bounded cache for search queries, radio, and home picks (prevents Worker OOM)
+const MAX_IN_MEMORY_CACHE = 50;
+
+function setBoundedCache<T>(map: Map<string, T>, key: string, value: T, max = MAX_IN_MEMORY_CACHE) {
+	if (map.size >= max) {
+		const oldestKey = map.keys().next().value;
+		if (oldestKey !== undefined) map.delete(oldestKey);
+	}
+	map.set(key, value);
+}
+
 const searchCache = new Map<string, { data: SongTrack[]; expiresAt: number }>();
 const radioCache = new Map<string, { data: SongTrack[]; expiresAt: number }>();
 let homePicksCache: { data: { title: string; tracks: SongTrack[] }[]; expiresAt: number } | null = null;
@@ -247,7 +257,7 @@ export async function searchTracks(query: string, kv?: KVNamespace): Promise<Son
 			const kvVal = await kv.get(`search:${cacheKey}`);
 			if (kvVal) {
 				const parsed = JSON.parse(kvVal) as SongTrack[];
-				searchCache.set(cacheKey, { data: parsed, expiresAt: Date.now() + 30 * 60 * 1000 });
+				setBoundedCache(searchCache, cacheKey, { data: parsed, expiresAt: Date.now() + 30 * 60 * 1000 });
 				return parsed;
 			}
 		} catch (err) {
@@ -263,7 +273,7 @@ export async function searchTracks(query: string, kv?: KVNamespace): Promise<Son
 
 	// 4. Cache results
 	if (tracks.length > 0) {
-		searchCache.set(cacheKey, { data: tracks, expiresAt: Date.now() + 30 * 60 * 1000 });
+		setBoundedCache(searchCache, cacheKey, { data: tracks, expiresAt: Date.now() + 30 * 60 * 1000 });
 		if (kv) {
 			try {
 				await kv.put(`search:${cacheKey}`, JSON.stringify(tracks), { expirationTtl: 7200 });
@@ -294,7 +304,7 @@ export async function getRadioTracks(videoId: string, kv?: KVNamespace): Promise
 			const kvVal = await kv.get(`radio:${videoId}`);
 			if (kvVal) {
 				const parsed = JSON.parse(kvVal) as SongTrack[];
-				radioCache.set(videoId, { data: parsed, expiresAt: Date.now() + 60 * 60 * 1000 });
+				setBoundedCache(radioCache, videoId, { data: parsed, expiresAt: Date.now() + 60 * 60 * 1000 });
 				return parsed;
 			}
 		} catch (err) {
@@ -363,7 +373,7 @@ export async function getRadioTracks(videoId: string, kv?: KVNamespace): Promise
 		}
 
 		if (tracks.length > 0) {
-			radioCache.set(videoId, { data: tracks, expiresAt: Date.now() + 60 * 60 * 1000 });
+			setBoundedCache(radioCache, videoId, { data: tracks, expiresAt: Date.now() + 60 * 60 * 1000 });
 			if (kv) {
 				try {
 					await kv.put(`radio:${videoId}`, JSON.stringify(tracks), { expirationTtl: 86400 });

@@ -2,6 +2,8 @@
 	"extends": "$app/tsconfig",
 	"compilerOptions": {
 		"strict": true,
+		"skipLibCheck": true,
+		"checkJs": false,
 		"types": [
 			"$app/types",
 			"./worker-configuration.d.ts"
@@ -11,5 +13,6 @@
 			"#lib/*": ["./src/lib/*"]
 		}
 	},
-	"include": ["src", "vite.config.ts"]
+	"include": ["src", "vite.config.ts"],
+	"exclude": [".svelte-kit/**", "node_modules/**"]
 }

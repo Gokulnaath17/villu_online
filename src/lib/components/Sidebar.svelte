@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { libraryStore } from '#lib/stores/library.svelte';
-	import { Home, Search, Library, Heart, Plus, Radio, Disc3 } from '@lucide/svelte';
+	import { Home, Search, Library, Heart, Plus, Radio, Disc3, LogOut } from '@lucide/svelte';
 
 	let isCreatingPlaylist = $state(false);
 	let newPlaylistName = $state('');
+	let user = $derived(page.data.user);
 
 	async function handleCreatePlaylist(e: SubmitEvent) {
 		e.preventDefault();
@@ -129,12 +130,34 @@
 		{/if}
 	</div>
 
-	<!-- Bottom System Pill -->
-	<div class="p-4 border-t border-white/5 flex items-center justify-between text-xs text-zinc-500">
-		<div class="flex items-center gap-2">
-			<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-			<span>Connected to Edge</span>
+	<!-- Bottom User & System Pill -->
+	<div class="p-4 border-t border-white/5 space-y-3">
+		{#if user}
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-2.5 min-w-0">
+					<div class="w-7 h-7 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center font-bold text-xs uppercase shrink-0">
+						{(user.name || user.username || 'U').slice(0, 1)}
+					</div>
+					<div class="min-w-0">
+						<p class="text-xs font-semibold text-zinc-200 truncate">{user.name || user.username}</p>
+						<p class="text-[10px] text-zinc-500 truncate">@{user.username}</p>
+					</div>
+				</div>
+				<a
+					href="/logout"
+					class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+					title="Sign out"
+				>
+					<LogOut class="w-3.5 h-3.5" />
+				</a>
+			</div>
+		{/if}
+		<div class="flex items-center justify-between text-xs text-zinc-500 pt-1">
+			<div class="flex items-center gap-2">
+				<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+				<span>Connected to Edge</span>
+			</div>
+			<span class="font-mono text-[10px] text-zinc-600">v0.1</span>
 		</div>
-		<span class="font-mono text-[10px] text-zinc-600">v0.1</span>
 	</div>
 </aside>

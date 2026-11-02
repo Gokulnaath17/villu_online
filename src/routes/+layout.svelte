@@ -3,6 +3,7 @@
 	import favicon from '#lib/assets/favicon.svg';
 	import type { LayoutProps } from './$types';
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { playerStore } from '#lib/stores/player.svelte';
 	import { libraryStore } from '#lib/stores/library.svelte';
 	import Sidebar from '#lib/components/Sidebar.svelte';
@@ -13,7 +14,11 @@
 
 	let { children }: LayoutProps = $props();
 
+	let isAuthPage = $derived(page.url.pathname === '/login');
+
 	onMount(() => {
+		if (page.url.pathname === '/login') return;
+
 		playerStore.init();
 		libraryStore.loadAll();
 
@@ -56,29 +61,35 @@
 	<title>Villu Online — Music Streaming</title>
 </svelte:head>
 
-<div class="flex h-screen w-screen bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
-	<!-- Left Sidebar -->
-	<Sidebar />
+{#if isAuthPage}
+	<main class="h-screen w-screen bg-[#09090b] text-zinc-100 overflow-y-auto">
+		{@render children()}
+	</main>
+{:else}
+	<div class="flex h-screen w-screen bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
+		<!-- Left Sidebar -->
+		<Sidebar />
 
-	<!-- Main Stage Area -->
-	<div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
-		<!-- Top Bar -->
-		<NavBar />
+		<!-- Main Stage Area -->
+		<div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative">
+			<!-- Top Bar -->
+			<NavBar />
 
-		<!-- Main Viewport Scroll Container -->
-		<main class="flex-1 overflow-y-auto pb-32 sm:pb-36 p-4 sm:p-8">
-			<div class="max-w-7xl mx-auto">
-				{@render children()}
-			</div>
-		</main>
+			<!-- Main Viewport Scroll Container -->
+			<main class="flex-1 overflow-y-auto pb-32 sm:pb-36 p-4 sm:p-8">
+				<div class="max-w-7xl mx-auto">
+					{@render children()}
+				</div>
+			</main>
 
-		<!-- Persistent Player Bar -->
-		<PlayerDock />
+			<!-- Persistent Player Bar -->
+			<PlayerDock />
+		</div>
+
+		<!-- Queue Sliding Panel -->
+		<QueueDrawer />
+
+		<!-- Expanded Fullscreen Player -->
+		<PlayerExpanded />
 	</div>
-
-	<!-- Queue Sliding Panel -->
-	<QueueDrawer />
-
-	<!-- Expanded Fullscreen Player -->
-	<PlayerExpanded />
-</div>
+{/if}

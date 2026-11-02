@@ -1,15 +1,17 @@
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getHomePicks } from '#lib/server/search';
 import { getBindings } from '#lib/server/cf';
 
-export const GET: RequestHandler = async ({ platform }) => {
+export const GET: RequestHandler = async ({ platform, locals }) => {
+	if (!locals.user) throw error(401, 'Unauthorized');
+
 	try {
 		const { STREAM_CACHE } = getBindings(platform);
 		const sections = await getHomePicks(STREAM_CACHE);
 		return json(sections, {
 			headers: {
-				'Cache-Control': 'public, max-age=1800'
+				'Cache-Control': 'private, max-age=1800'
 			}
 		});
 	} catch (err: any) {

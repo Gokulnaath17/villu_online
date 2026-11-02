@@ -2,10 +2,15 @@ import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { resolveStream } from '#lib/server/stream';
 import { getBindings } from '#lib/server/cf';
+import { isValidVideoId } from '#lib/server/db';
 
-export const GET: RequestHandler = async ({ params, platform, request }) => {
+export const GET: RequestHandler = async ({ params, platform, request, locals }) => {
+	if (!locals.user) throw error(401, 'Unauthorized');
+
 	const { videoId } = params;
-	if (!videoId) throw error(400, 'Missing videoId');
+	if (!isValidVideoId(videoId)) {
+		throw error(400, 'Invalid videoId format');
+	}
 
 	const { STREAM_CACHE } = getBindings(platform);
 	try {
@@ -54,8 +59,7 @@ function makeAudioResponse(res: Response): Response {
 	}
 	headers.set('Content-Type', contentType);
 	headers.set('Accept-Ranges', 'bytes');
-	headers.set('Access-Control-Allow-Origin', '*');
-	headers.set('Cache-Control', 'public, max-age=14400');
+	headers.set('Cache-Control', 'private, max-age=14400');
 
 	const contentRange = res.headers.get('content-range');
 	if (contentRange) {

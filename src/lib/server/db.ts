@@ -9,15 +9,24 @@ const memoryDb = {
 	history: [] as { userId: string; track: SongTrack; playedAt: number }[]
 };
 
-export function getUserIdFromRequest(request: Request): UserSession {
-	// Cloudflare Access passes authenticated user's email in Cf-Access-Authenticated-User-Email
-	const cfEmail = request.headers.get('cf-access-authenticated-user-email');
-	const email = cfEmail || 'personal@villu.online';
-	const id = Buffer.from(email).toString('base64url').slice(0, 16);
+export function isValidVideoId(id: unknown): id is string {
+	return typeof id === 'string' && /^[a-zA-Z0-9_-]{11}$/.test(id);
+}
+
+export function sanitizeTrack(track: any): SongTrack {
+	if (!track || typeof track !== 'object') {
+		throw new Error('Invalid track payload');
+	}
+	if (!isValidVideoId(track.videoId)) {
+		throw new Error('Invalid videoId format');
+	}
 	return {
-		id,
-		email,
-		name: email.split('@')[0]
+		videoId: track.videoId,
+		title: String(track.title || 'Unknown Title').slice(0, 200),
+		artist: String(track.artist || 'Unknown Artist').slice(0, 200),
+		thumbnail: String(track.thumbnail || `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg`).slice(0, 500),
+		duration: Math.max(0, Math.min(86400, Number(track.duration) || 0)),
+		album: track.album ? String(track.album).slice(0, 200) : undefined
 	};
 }
 
@@ -26,19 +35,40 @@ export async function ensureUser(db: D1Database | undefined, user: UserSession):
 		try {
 			await db
 				.prepare(
-					'INSERT INTO users (id, email, name) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name'
+					'INSERT INTO users (id, username, email, name) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name'
 				)
-				.bind(user.id, user.email, user.name || user.email)
+				.bind(user.id, user.username, user.email || null, user.name || user.username)
 				.run();
 		} catch (err) {
 			console.warn('ensureUser D1 error:', err);
 		}
 	} else {
-		memoryDb.users.set(user.id, { id: user.id, email: user.email, name: user.name || user.email });
+		memoryDb.users.set(user.id, { id: user.id, email: user.email || user.username, name: user.name || user.username });
 	}
 }
 
 // ─── Playlists ──────────────────────────────────────────────────────────────
+
+export async function verifyPlaylistOwnership(
+	db: D1Database | undefined,
+	playlistId: string,
+	userId: string
+): Promise<boolean> {
+	if (db) {
+		try {
+			const row = await db
+				.prepare('SELECT 1 FROM playlists WHERE id = ? AND user_id = ?')
+				.bind(playlistId, userId)
+				.first();
+			return !!row;
+		} catch (err) {
+			console.warn('verifyPlaylistOwnership D1 error:', err);
+			return false;
+		}
+	}
+	const pl = memoryDb.playlists.get(playlistId);
+	return pl?.userId === userId;
+}
 
 export async function getUserPlaylists(db: D1Database | undefined, userId: string): Promise<Playlist[]> {
 	if (db) {
@@ -78,7 +108,8 @@ export async function getUserPlaylists(db: D1Database | undefined, userId: strin
 
 export async function getPlaylistById(
 	db: D1Database | undefined,
-	playlistId: string
+	playlistId: string,
+	requestingUserId?: string
 ): Promise<Playlist | null> {
 	if (db) {
 		try {
@@ -92,6 +123,11 @@ export async function getPlaylistById(
 				.first()) as any;
 
 			if (!playlist) return null;
+
+			// If requestingUserId is supplied, ensure user has authorization to view (owner or public)
+			if (requestingUserId && playlist.userId !== requestingUserId && !playlist.isPublic) {
+				return null;
+			}
 
 			const { results: tracks } = await db
 				.prepare(
@@ -116,6 +152,9 @@ export async function getPlaylistById(
 
 	const found = memoryDb.playlists.get(playlistId);
 	if (!found) return null;
+	if (requestingUserId && found.userId !== requestingUserId && !found.isPublic) {
+		return null;
+	}
 	return {
 		...found,
 		tracksCount: found.tracks?.length || 0
@@ -130,20 +169,22 @@ export async function createPlaylist(
 ): Promise<Playlist> {
 	const id = crypto.randomUUID().slice(0, 12);
 	const now = Math.floor(Date.now() / 1000);
+	const cleanName = String(name || 'Untitled Playlist').trim().slice(0, 100);
+	const cleanDesc = description ? String(description).trim().slice(0, 500) : '';
 
 	if (db) {
 		await db
 			.prepare(
 				'INSERT INTO playlists (id, user_id, name, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
 			)
-			.bind(id, userId, name, description || '', now, now)
+			.bind(id, userId, cleanName, cleanDesc, now, now)
 			.run();
 	} else {
 		memoryDb.playlists.set(id, {
 			id,
 			userId,
-			name,
-			description,
+			name: cleanName,
+			description: cleanDesc,
 			createdAt: now,
 			updatedAt: now,
 			tracks: []
@@ -153,8 +194,8 @@ export async function createPlaylist(
 	return {
 		id,
 		userId,
-		name,
-		description,
+		name: cleanName,
+		description: cleanDesc,
 		createdAt: now,
 		updatedAt: now,
 		tracksCount: 0,
@@ -165,12 +206,12 @@ export async function createPlaylist(
 export async function addTrackToPlaylist(
 	db: D1Database | undefined,
 	playlistId: string,
-	track: SongTrack
+	rawTrack: SongTrack
 ): Promise<void> {
+	const track = sanitizeTrack(rawTrack);
 	const now = Math.floor(Date.now() / 1000);
 
 	if (db) {
-		// Find max position
 		const maxPosRow = (await db
 			.prepare('SELECT MAX(position) as maxPos FROM playlist_tracks WHERE playlist_id = ?')
 			.bind(playlistId)
@@ -209,6 +250,10 @@ export async function removeTrackFromPlaylist(
 	playlistId: string,
 	videoId: string
 ): Promise<void> {
+	if (!isValidVideoId(videoId)) {
+		throw new Error('Invalid videoId');
+	}
+
 	if (db) {
 		await db
 			.prepare('DELETE FROM playlist_tracks WHERE playlist_id = ? AND video_id = ?')
@@ -217,7 +262,7 @@ export async function removeTrackFromPlaylist(
 	} else {
 		const pl = memoryDb.playlists.get(playlistId);
 		if (pl && pl.tracks) {
-			pl.tracks = pl.tracks.filter((t) => t.videoId !== videoId);
+			pl.tracks = pl.tracks.filter((t) => t.videoId !== videoId) as any;
 		}
 	}
 }
@@ -227,8 +272,9 @@ export async function removeTrackFromPlaylist(
 export async function toggleLikeSong(
 	db: D1Database | undefined,
 	userId: string,
-	track: SongTrack
+	rawTrack: SongTrack
 ): Promise<boolean> {
+	const track = sanitizeTrack(rawTrack);
 	const now = Math.floor(Date.now() / 1000);
 
 	if (db) {
@@ -319,8 +365,9 @@ export async function getLikedSongs(db: D1Database | undefined, userId: string):
 export async function recordHistory(
 	db: D1Database | undefined,
 	userId: string,
-	track: SongTrack
+	rawTrack: SongTrack
 ): Promise<void> {
+	const track = sanitizeTrack(rawTrack);
 	const now = Math.floor(Date.now() / 1000);
 
 	if (db) {
@@ -345,6 +392,7 @@ export async function getRecentHistory(
 	userId: string,
 	limit: number = 30
 ): Promise<SongTrack[]> {
+	const safeLimit = Math.max(1, Math.min(100, limit));
 	if (db) {
 		try {
 			const { results } = await db
@@ -355,10 +403,9 @@ export async function getRecentHistory(
 					 ORDER BY played_at DESC
 					 LIMIT ?`
 				)
-				.bind(userId, limit)
+				.bind(userId, safeLimit)
 				.all();
 
-			// Deduplicate by videoId in returned order
 			const seen = new Set<string>();
 			const unique: SongTrack[] = [];
 			for (const r of (results as any[]) || []) {
@@ -382,5 +429,5 @@ export async function getRecentHistory(
 			unique.push(item.track);
 		}
 	}
-	return unique.slice(0, limit);
+	return unique.slice(0, safeLimit);
 }

@@ -103,7 +103,15 @@ Update `database_id` and `id` in `wrangler.jsonc` with the IDs returned from the
 }
 ```
 
-### 3. Deploy
+### 3. Remote Database Migration (For Existing Deployments)
+
+If you have an existing remote D1 database, apply the auth migration:
+
+```bash
+npx wrangler d1 execute villu-db --remote --file=./migrations/0001_auth.sql
+```
+
+### 4. Deploy
 
 **Option A — Direct deploy with Wrangler:**
 ```bash
@@ -120,13 +128,13 @@ npx wrangler deploy
    - KV Namespace: Variable name `STREAM_CACHE` -> `STREAM_CACHE`
 5. Save and deploy.
 
-### 4. Personal Authentication (Cloudflare Zero Trust)
+### 5. First-Run Admin Setup & Security
 
-To restrict the app for personal use:
-1. In Cloudflare Dashboard, go to **Zero Trust** -> **Access** -> **Applications**.
-2. Add your deployed domain.
-3. Add a policy: **Allow** with **Rule type: Emails** set to your email address.
-4. Cloudflare will enforce email OTP login before anyone can access the site.
+1. Open your deployed URL.
+2. The server detects that 0 accounts exist and automatically presents the **Setup Admin Account** screen.
+3. Enter your desired admin username and master password.
+4. Your account is created, any legacy playlists and history are claimed by your account, and registration is permanently locked down.
+5. All application pages and API endpoints (including audio proxies) are protected behind your authenticated `HttpOnly` session.
 
 ---
 

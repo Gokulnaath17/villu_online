@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Search, Disc3, Home, Library } from '@lucide/svelte';
+	import { Search, Disc3, Home, Library, LogOut } from '@lucide/svelte';
 
 	let searchQuery = $state('');
 
@@ -47,6 +47,13 @@
 			title="Library"
 		>
 			<Library class="w-5 h-5" />
+		</a>
+		<a
+			href="/logout"
+			class="p-2 rounded-lg text-zinc-400 hover:text-rose-400"
+			title="Sign out"
+		>
+			<LogOut class="w-5 h-5" />
 		</a>
 	</div>
 </header>

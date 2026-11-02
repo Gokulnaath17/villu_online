@@ -34,7 +34,15 @@ export type LoopMode = 'off' | 'all' | 'one';
 
 export interface UserSession {
 	id: string;
-	email: string;
+	username: string;
+	email?: string;
 	name?: string;
+	role?: string;
 }
 
+export interface Session {
+	id: string;
+	userId: string;
+	expiresAt: number;
+	createdAt: number;
+}

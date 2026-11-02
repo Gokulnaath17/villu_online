@@ -75,7 +75,7 @@ class LibraryStore {
 				body: JSON.stringify({ track })
 			});
 			if (res.ok) {
-				const data = await res.json();
+				const data = (await res.json()) as any;
 				if (data.isLiked) {
 					this._likedIds.add(track.videoId);
 				} else {

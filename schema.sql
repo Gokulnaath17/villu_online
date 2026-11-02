@@ -1,10 +1,31 @@
--- Users (minimal — CF Access handles actual auth, fallback to default user)
+-- Users
 CREATE TABLE IF NOT EXISTS users (
+    id            TEXT PRIMARY KEY,
+    username      TEXT UNIQUE,
+    email         TEXT UNIQUE,
+    name          TEXT,
+    password_hash TEXT,
+    password_salt TEXT,
+    iterations    INTEGER DEFAULT 100000,
+    role          TEXT DEFAULT 'user',
+    created_at    INTEGER DEFAULT (unixepoch()),
+    updated_at    INTEGER DEFAULT (unixepoch())
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- Sessions
+CREATE TABLE IF NOT EXISTS sessions (
     id         TEXT PRIMARY KEY,
-    email      TEXT UNIQUE NOT NULL,
-    name       TEXT,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    ip_hash    TEXT,
+    user_agent TEXT,
+    expires_at INTEGER NOT NULL,
     created_at INTEGER DEFAULT (unixepoch())
 );
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
 -- Playlists
 CREATE TABLE IF NOT EXISTS playlists (
@@ -57,4 +78,3 @@ CREATE TABLE IF NOT EXISTS history (
 
 CREATE INDEX IF NOT EXISTS idx_history_user_time ON history(user_id, played_at DESC);
 CREATE INDEX IF NOT EXISTS idx_playlist_tracks_pos ON playlist_tracks(playlist_id, position ASC);
-
