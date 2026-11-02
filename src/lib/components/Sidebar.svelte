@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { libraryStore } from '#lib/stores/library.svelte';
-	import { Home, Search, Library, Heart, Plus, Radio, Disc3, LogOut } from '@lucide/svelte';
+	import { Home, Search, Library, Heart, Plus, Radio, Disc3, LogOut, Shield } from '@lucide/svelte';
 
 	let isCreatingPlaylist = $state(false);
 	let newPlaylistName = $state('');
@@ -53,6 +53,15 @@
 			<Library class="w-4 h-4 {page.url.pathname.startsWith('/library') ? 'text-sky-400' : ''}" />
 			Your Library
 		</a>
+		{#if user?.role === 'admin'}
+			<a
+				href="/admin"
+				class="flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors {page.url.pathname.startsWith('/admin') ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' : 'text-zinc-400 hover:text-white hover:bg-white/5'}"
+			>
+				<Shield class="w-4 h-4 {page.url.pathname.startsWith('/admin') ? 'text-sky-400' : ''}" />
+				Admin Center
+			</a>
+		{/if}
 	</nav>
 
 	<!-- Quick Liked Songs Button -->

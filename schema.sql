@@ -8,11 +8,26 @@ CREATE TABLE IF NOT EXISTS users (
     password_salt TEXT,
     iterations    INTEGER DEFAULT 100000,
     role          TEXT DEFAULT 'user',
+    is_active     INTEGER DEFAULT 1,
     created_at    INTEGER DEFAULT (unixepoch()),
     updated_at    INTEGER DEFAULT (unixepoch())
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- Audit Logs
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT,
+    username   TEXT,
+    action     TEXT NOT NULL,
+    details    TEXT,
+    ip_hash    TEXT,
+    created_at INTEGER DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_time ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
 
 -- Sessions
 CREATE TABLE IF NOT EXISTS sessions (

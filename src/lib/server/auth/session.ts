@@ -93,8 +93,8 @@ export async function createUser(
 	if (db) {
 		await db
 			.prepare(
-				`INSERT INTO users (id, username, email, name, password_hash, password_salt, iterations, role, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+				`INSERT INTO users (id, username, email, name, password_hash, password_salt, iterations, role, is_active, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
 			)
 			.bind(id, cleanUsername, cleanEmail, displayName, hash, salt, iterations, role, now, now)
 			.run();
@@ -137,7 +137,8 @@ export async function authenticateUser(
 		try {
 			const user = await db
 				.prepare(
-					`SELECT id, username, email, name, password_hash, password_salt, iterations, role
+					`SELECT id, username, email, name, password_hash, password_salt, iterations, role,
+					        COALESCE(is_active, 1) as is_active
 					 FROM users
 					 WHERE username = ? OR email = ?
 					 LIMIT 1`
@@ -146,6 +147,11 @@ export async function authenticateUser(
 				.first<any>();
 
 			if (!user || !user.password_hash || !user.password_salt) {
+				return null;
+			}
+
+			// Reject deactivated accounts
+			if (user.is_active === 0) {
 				return null;
 			}
 
@@ -163,7 +169,8 @@ export async function authenticateUser(
 				username: user.username,
 				email: user.email,
 				name: user.name,
-				role: user.role
+				role: user.role,
+				isActive: user.is_active === 1
 			};
 		} catch (err) {
 			console.error('authenticateUser D1 error:', err);
@@ -228,10 +235,10 @@ export async function validateSession(
 			const row = await db
 				.prepare(
 					`SELECT s.id as session_id, s.user_id, s.expires_at, s.created_at as session_created_at,
-					        u.id, u.username, u.email, u.name, u.role
+					        u.id, u.username, u.email, u.name, u.role, COALESCE(u.is_active, 1) as is_active
 					 FROM sessions s
 					 JOIN users u ON s.user_id = u.id
-					 WHERE s.id = ? AND s.expires_at > ?
+					 WHERE s.id = ? AND s.expires_at > ? AND COALESCE(u.is_active, 1) = 1
 					 LIMIT 1`
 				)
 				.bind(sessionId, now)
@@ -245,7 +252,8 @@ export async function validateSession(
 					username: row.username,
 					email: row.email,
 					name: row.name,
-					role: row.role
+					role: row.role,
+					isActive: true
 				},
 				session: {
 					id: row.session_id,

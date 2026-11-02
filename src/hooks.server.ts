@@ -73,7 +73,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 	response.headers.set(
 		'Content-Security-Policy',
-		"default-src 'self'; img-src 'self' https://i.ytimg.com https://yt3.googleusercontent.com https://*.ggpht.com https://*.google.com data:; media-src 'self' blob:; connect-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; frame-ancestors 'none';"
+		"default-src 'self'; img-src 'self' https://i.ytimg.com https://yt3.googleusercontent.com https://*.ggpht.com https://*.google.com data:; media-src 'self' blob: data:; connect-src 'self' https://www.youtube.com https://*.googlevideo.com https://*.doubleclick.net; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; child-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://www.youtube.com https://s.ytimg.com; frame-ancestors 'none';"
 	);
 
 	return response;

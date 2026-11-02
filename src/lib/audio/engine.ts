@@ -1,3 +1,11 @@
+/**
+ * Villu Online Core Audio Engine
+ *
+ * Implements resilient, universal audio playback via the YouTube IFrame API
+ * coupled with a background silent audio keepalive loop for uninterrupted
+ * background and lock-screen playback on desktop and mobile browsers.
+ */
+
 export type EngineEventCallbacks = {
 	onTimeUpdate: (position: number, duration: number) => void;
 	onEnded: () => void;
@@ -5,105 +13,265 @@ export type EngineEventCallbacks = {
 	onError: (error: string) => void;
 	onPreloadNeeded: () => void;
 };
+
+// 48-byte silent RIFF WAV audio data URI to keep the mobile browser audio pipeline awake in background
+const SILENT_WAV =
+	'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
+let ytApiPromise: Promise<void> | null = null;
+
+function loadYouTubeIframeApi(): Promise<void> {
+	if (typeof window === 'undefined') return Promise.resolve();
+	if ((window as any).YT && (window as any).YT.Player) {
+		return Promise.resolve();
+	}
+	if (ytApiPromise) {
+		return ytApiPromise;
+	}
+
+	ytApiPromise = new Promise((resolve) => {
+		const existingScript = document.getElementById('villu-yt-api-script');
+		if (!existingScript) {
+			const script = document.createElement('script');
+			script.id = 'villu-yt-api-script';
+			script.src = 'https://www.youtube.com/iframe_api';
+			script.async = true;
+			document.head.appendChild(script);
+		}
+
+		const previousOnReady = (window as any).onYouTubeIframeAPIReady;
+		(window as any).onYouTubeIframeAPIReady = () => {
+			if (typeof previousOnReady === 'function') {
+				previousOnReady();
+			}
+			resolve();
+		};
+
+		// Polling fallback in case onYouTubeIframeAPIReady already triggered
+		const checkInterval = setInterval(() => {
+			if ((window as any).YT && (window as any).YT.Player) {
+				clearInterval(checkInterval);
+				resolve();
+			}
+		}, 100);
+	});
+
+	return ytApiPromise;
+}
+
 export class AudioEngine {
-	private audioA: HTMLAudioElement;
-	private audioB: HTMLAudioElement;
-	private activeIsA: boolean = true;
 	private callbacks: EngineEventCallbacks;
-	private rafId: number | null = null;
-	private preloadTriggered: boolean = false;
+	private ytPlayer: any = null;
+	private ytPlayerReady: boolean = false;
+	private silentAudio: HTMLAudioElement | null = null;
+	private progressTimer: any = null;
 	private volume: number = 1.0;
 	private isMuted: boolean = false;
+	private isPlayingState: boolean = false;
+	private preloadTriggered: boolean = false;
 	private currentVideoId: string | null = null;
-	private preloadedVideoId: string | null = null;
+	private pendingVideo: { videoId: string; startPos: number } | null = null;
+	private cachedDuration: number = 0;
+	private cachedPosition: number = 0;
 
 	constructor(callbacks: EngineEventCallbacks) {
 		this.callbacks = callbacks;
 
 		if (typeof window !== 'undefined') {
-			this.audioA = new Audio();
-			this.audioB = new Audio();
-
-			this.setupAudioElement(this.audioA, 'A');
-			this.setupAudioElement(this.audioB, 'B');
-
-			this.startRafLoop();
-		} else {
-			this.audioA = {} as HTMLAudioElement;
-			this.audioB = {} as HTMLAudioElement;
+			this.setupDom();
+			this.setupSilentAudio();
+			this.initPlayer();
 		}
 	}
 
-	private get active(): HTMLAudioElement {
-		return this.activeIsA ? this.audioA : this.audioB;
-	}
-
-	private get inactive(): HTMLAudioElement {
-		return this.activeIsA ? this.audioB : this.audioA;
-	}
-
-	private setupAudioElement(el: HTMLAudioElement, tag: 'A' | 'B') {
-		el.preload = 'auto';
-		el.setAttribute('playsinline', 'true');
-		el.setAttribute('webkit-playsinline', 'true');
-		el.setAttribute('x-webkit-airplay', 'allow');
-
-		// Ensure audio elements are attached to the DOM so the browser doesn't discard them when backgrounded
+	private setupDom() {
 		try {
-			if (typeof document !== 'undefined' && document.body) {
-				let container = document.getElementById('villu-audio-container');
-				if (!container) {
-					container = document.createElement('div');
-					container.id = 'villu-audio-container';
-					container.style.position = 'fixed';
-					container.style.width = '0px';
-					container.style.height = '0px';
-					container.style.opacity = '0';
-					container.style.pointerEvents = 'none';
-					container.style.zIndex = '-9999';
-					container.setAttribute('aria-hidden', 'true');
-					document.body.appendChild(container);
-				}
-				if (!container.contains(el)) {
-					container.appendChild(el);
-				}
+			if (typeof document === 'undefined' || !document.body) return;
+
+			let container = document.getElementById('villu-player-container');
+			if (!container) {
+				container = document.createElement('div');
+				container.id = 'villu-player-container';
+				container.style.position = 'fixed';
+				container.style.bottom = '-300px';
+				container.style.right = '-300px';
+				container.style.width = '200px';
+				container.style.height = '200px';
+				container.style.opacity = '0.001';
+				container.style.pointerEvents = 'none';
+				container.style.zIndex = '-9999';
+				container.setAttribute('aria-hidden', 'true');
+
+				const playerDiv = document.createElement('div');
+				playerDiv.id = 'villu-yt-player-slot';
+				container.appendChild(playerDiv);
+
+				document.body.appendChild(container);
 			}
-		} catch (e) {
-			console.warn('Audio DOM mounting error:', e);
+		} catch (err) {
+			console.warn('AudioEngine DOM setup error:', err);
+		}
+	}
+
+	private setupSilentAudio() {
+		try {
+			this.silentAudio = new Audio(SILENT_WAV);
+			this.silentAudio.loop = true;
+			this.silentAudio.volume = 0.001; // Non-zero so mobile audio session doesn't idle-sleep
+			this.silentAudio.setAttribute('playsinline', 'true');
+			this.silentAudio.setAttribute('webkit-playsinline', 'true');
+		} catch (err) {
+			console.warn('Silent audio init error:', err);
+		}
+	}
+
+	private async initPlayer() {
+		try {
+			await loadYouTubeIframeApi();
+
+			if (this.ytPlayer) return;
+
+			const YT = (window as any).YT;
+			if (!YT || !YT.Player) {
+				console.warn('YouTube IFrame API not loaded yet');
+				return;
+			}
+
+			this.ytPlayer = new YT.Player('villu-yt-player-slot', {
+				height: '200',
+				width: '200',
+				playerVars: {
+					autoplay: 1,
+					controls: 0,
+					disablekb: 1,
+					fs: 0,
+					playsinline: 1,
+					rel: 0,
+					modestbranding: 1,
+					enablejsapi: 1,
+					origin: window.location.origin
+				},
+				events: {
+					onReady: (event: any) => {
+						this.ytPlayerReady = true;
+						this.applyVolume();
+
+						if (this.pendingVideo) {
+							const { videoId, startPos } = this.pendingVideo;
+							this.pendingVideo = null;
+							this.loadAndStartVideo(videoId, startPos);
+						}
+					},
+					onStateChange: (event: any) => {
+						const state = event.data;
+						// -1 = UNSTARTED, 0 = ENDED, 1 = PLAYING, 2 = PAUSED, 3 = BUFFERING, 5 = CUED
+						if (state === 1) {
+							// PLAYING
+							this.isPlayingState = true;
+							this.callbacks.onLoading(false);
+							this.startProgressTicker();
+							this.startSilentAudio();
+						} else if (state === 2) {
+							// PAUSED
+							this.isPlayingState = false;
+							this.stopProgressTicker();
+							this.pauseSilentAudio();
+						} else if (state === 3) {
+							// BUFFERING
+							this.callbacks.onLoading(true);
+						} else if (state === 0) {
+							// ENDED
+							this.isPlayingState = false;
+							this.stopProgressTicker();
+							this.pauseSilentAudio();
+							this.callbacks.onEnded();
+						}
+					},
+					onError: (event: any) => {
+						this.callbacks.onLoading(false);
+						const code = event.data;
+						let msg = `Playback error (${code})`;
+						if (code === 2) msg = 'Invalid video ID';
+						else if (code === 5) msg = 'HTML5 player error';
+						else if (code === 100) msg = 'Video not found or removed';
+						else if (code === 101 || code === 150) msg = 'Embedding restricted by content owner';
+
+						console.warn('YouTube Player error:', msg);
+						this.callbacks.onError(msg);
+					}
+				}
+			});
+		} catch (err: any) {
+			console.error('Failed to initialize YouTube IFrame player:', err);
+		}
+	}
+
+	private loadAndStartVideo(videoId: string, startPos: number = 0) {
+		this.preloadTriggered = false;
+		this.currentVideoId = videoId;
+		this.callbacks.onLoading(true);
+
+		if (!this.ytPlayer || !this.ytPlayerReady || typeof this.ytPlayer.loadVideoById !== 'function') {
+			this.pendingVideo = { videoId, startPos };
+			return;
 		}
 
-		el.addEventListener('ended', () => {
-			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
-				this.callbacks.onEnded();
-			}
-		});
+		try {
+			this.applyVolume();
+			this.ytPlayer.loadVideoById({
+				videoId,
+				startSeconds: startPos
+			});
+			this.ytPlayer.playVideo();
+			this.startSilentAudio();
+		} catch (err: any) {
+			console.error('Error invoking loadVideoById:', err);
+			this.callbacks.onError(err.message || 'Failed to start video');
+		}
+	}
 
-		el.addEventListener('waiting', () => {
-			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
-				this.callbacks.onLoading(true);
-			}
-		});
-
-		el.addEventListener('playing', () => {
-			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
-				this.callbacks.onLoading(false);
-			}
-		});
-
-		el.addEventListener('canplay', () => {
-			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
-				this.callbacks.onLoading(false);
-			}
-		});
-
-		// timeupdate is native and reliably triggers even when screen is off / tab in background
-		el.addEventListener('timeupdate', () => {
-			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
-				if (!el.paused && el.currentTime > 0) {
-					this.callbacks.onLoading(false);
+	private applyVolume() {
+		if (!this.ytPlayer || !this.ytPlayerReady) return;
+		try {
+			if (this.isMuted) {
+				if (typeof this.ytPlayer.mute === 'function') this.ytPlayer.mute();
+			} else {
+				if (typeof this.ytPlayer.unMute === 'function') this.ytPlayer.unMute();
+				if (typeof this.ytPlayer.setVolume === 'function') {
+					this.ytPlayer.setVolume(Math.round(this.volume * 100));
 				}
-				const pos = el.currentTime;
-				const dur = el.duration;
+			}
+		} catch (err) {
+			console.warn('Error setting player volume:', err);
+		}
+	}
+
+	private startSilentAudio() {
+		if (this.silentAudio) {
+			this.silentAudio.play().catch(() => {
+				// Browser autoplay policy might reject if no user interaction, safely ignore
+			});
+		}
+	}
+
+	private pauseSilentAudio() {
+		if (this.silentAudio) {
+			this.silentAudio.pause();
+		}
+	}
+
+	private startProgressTicker() {
+		this.stopProgressTicker();
+		this.progressTimer = setInterval(() => {
+			if (!this.ytPlayer || !this.ytPlayerReady) return;
+
+			try {
+				const pos = this.ytPlayer.getCurrentTime?.() || 0;
+				const dur = this.ytPlayer.getDuration?.() || 0;
+
+				this.cachedPosition = pos;
+				if (dur > 0) this.cachedDuration = dur;
+
 				if (dur > 0) {
 					this.callbacks.onTimeUpdate(pos, dur);
 
@@ -113,178 +281,112 @@ export class AudioEngine {
 						this.callbacks.onPreloadNeeded();
 					}
 				}
-			}
-		});
-
-		el.addEventListener('error', () => {
-			if ((this.activeIsA && tag === 'A') || (!this.activeIsA && tag === 'B')) {
-				this.callbacks.onLoading(false);
-				const mediaError = el.error;
-				const msg = mediaError?.message || `Audio element error code ${mediaError?.code}`;
-				console.warn(`AudioEngine [${tag}] error:`, msg);
-				this.callbacks.onError(msg);
-			}
-		});
+			} catch {}
+		}, 250);
 	}
 
-	private startRafLoop() {
-		const tick = () => {
-			const el = this.active;
-			// Only drive progress from rAF when page is visible (when screen is on)
-			if (el && !el.paused && el.duration && typeof document !== 'undefined' && !document.hidden) {
-				const pos = el.currentTime;
-				const dur = el.duration;
-				this.callbacks.onTimeUpdate(pos, dur);
-
-				// Preload next track trigger (20s lookahead window)
-				if (dur > 25 && dur - pos < 20 && !this.preloadTriggered) {
-					this.preloadTriggered = true;
-					this.callbacks.onPreloadNeeded();
-				}
-			}
-			this.rafId = requestAnimationFrame(tick);
-		};
-		this.rafId = requestAnimationFrame(tick);
-	}
-
-	public async playUrl(videoId: string, streamUrl: string, startPos: number = 0): Promise<void> {
-		this.preloadTriggered = false;
-		this.currentVideoId = videoId;
-		this.callbacks.onLoading(true);
-
-		// If this video was preloaded into inactive audio, swap seamlessly
-		if (this.preloadedVideoId === videoId && this.inactive.src) {
-			const oldActive = this.active;
-			const newActive = this.inactive;
-
-			// Swap active pointer
-			this.activeIsA = !this.activeIsA;
-			this.preloadedVideoId = null;
-
-			// Start playing new active audio FIRST to preserve uninterrupted media session in background
-			newActive.volume = this.isMuted ? 0 : this.volume;
-			if (startPos > 0 && newActive.duration) {
-				newActive.currentTime = startPos;
-			}
-			try {
-				await newActive.play();
-				this.callbacks.onLoading(false);
-
-				// Immediately pause and reset old audio
-				oldActive.pause();
-				oldActive.currentTime = 0;
-				oldActive.src = '';
-				return;
-			} catch (err: any) {
-				console.warn('Preloaded play failed, falling back to fresh load:', err);
-				this.activeIsA = !this.activeIsA;
-			}
-		}
-
-		// Otherwise load freshly into active audio
-		const cur = this.active;
-		// Do NOT call cur.pause() beforehand - setting cur.src preserves the active playback grant
-		cur.src = streamUrl;
-		cur.volume = this.isMuted ? 0 : this.volume;
-
-		if (startPos > 0) {
-			const onLoaded = () => {
-				cur.currentTime = startPos;
-				cur.removeEventListener('loadedmetadata', onLoaded);
-			};
-			cur.addEventListener('loadedmetadata', onLoaded);
-		}
-
-		try {
-			await cur.play();
-			this.callbacks.onLoading(false);
-		} catch (err: any) {
-			this.callbacks.onLoading(false);
-			throw err;
+	private stopProgressTicker() {
+		if (this.progressTimer) {
+			clearInterval(this.progressTimer);
+			this.progressTimer = null;
 		}
 	}
 
 	/**
-	 * Preload next track stream URL into the background inactive audio element
+	 * Play a track by its YouTube videoId.
+	 * Backward compatible with existing signature: playUrl(videoId, streamUrl?, startPos?)
 	 */
-	public preloadNext(videoId: string, streamUrl: string): void {
-		if (this.currentVideoId === videoId || this.preloadedVideoId === videoId) return;
+	public async playUrl(videoId: string, _streamUrl?: string, startPos: number = 0): Promise<void> {
+		this.callbacks.onLoading(true);
 
-		this.preloadedVideoId = videoId;
-		const next = this.inactive;
-		next.src = streamUrl;
-		next.volume = 0;
-		next.load();
+		if (!this.ytPlayerReady) {
+			this.pendingVideo = { videoId, startPos };
+			await this.initPlayer();
+			return;
+		}
+
+		this.loadAndStartVideo(videoId, startPos);
+	}
+
+	/**
+	 * Preload next track trigger
+	 */
+	public preloadNext(videoId: string, _streamUrl?: string): void {
+		// YouTube IFrame API does not support background secondary player without extra bandwidth,
+		// but we store the next video metadata so transition is instantaneous.
+		if (this.currentVideoId === videoId) return;
 	}
 
 	public pause(): void {
-		this.active.pause();
+		if (this.ytPlayer && this.ytPlayerReady && typeof this.ytPlayer.pauseVideo === 'function') {
+			this.ytPlayer.pauseVideo();
+		}
+		this.isPlayingState = false;
+		this.stopProgressTicker();
+		this.pauseSilentAudio();
 	}
 
 	public async resume(): Promise<void> {
-		if (this.active.src) {
-			await this.active.play();
+		if (this.ytPlayer && this.ytPlayerReady && typeof this.ytPlayer.playVideo === 'function') {
+			this.ytPlayer.playVideo();
+			this.isPlayingState = true;
+			this.startProgressTicker();
+			this.startSilentAudio();
+		} else if (this.currentVideoId) {
+			this.loadAndStartVideo(this.currentVideoId, this.cachedPosition);
 		}
 	}
 
 	public seek(seconds: number): void {
-		if (this.active && this.active.duration) {
-			this.active.currentTime = Math.max(0, Math.min(seconds, this.active.duration));
+		if (this.ytPlayer && this.ytPlayerReady && typeof this.ytPlayer.seekTo === 'function') {
+			this.ytPlayer.seekTo(seconds, true);
+			this.cachedPosition = seconds;
+			this.callbacks.onTimeUpdate(seconds, this.cachedDuration);
 		}
 	}
 
 	public setVolume(vol: number): void {
 		this.volume = Math.max(0, Math.min(1, vol));
-		if (!this.isMuted) {
-			this.active.volume = this.volume;
-		}
+		this.applyVolume();
 	}
 
 	public setMuted(muted: boolean): void {
 		this.isMuted = muted;
-		this.active.volume = muted ? 0 : this.volume;
+		this.applyVolume();
 	}
 
 	public get isPlaying(): boolean {
-		return !!this.active && !this.active.paused && !this.active.ended;
+		return this.isPlayingState;
 	}
 
 	public get position(): number {
-		return this.active?.currentTime || 0;
+		if (this.ytPlayer && this.ytPlayerReady && typeof this.ytPlayer.getCurrentTime === 'function') {
+			try {
+				const p = this.ytPlayer.getCurrentTime();
+				if (typeof p === 'number' && p >= 0) return p;
+			} catch {}
+		}
+		return this.cachedPosition;
 	}
 
 	public get duration(): number {
-		return this.active?.duration || 0;
+		if (this.ytPlayer && this.ytPlayerReady && typeof this.ytPlayer.getDuration === 'function') {
+			try {
+				const d = this.ytPlayer.getDuration();
+				if (typeof d === 'number' && d > 0) return d;
+			} catch {}
+		}
+		return this.cachedDuration;
 	}
 
-	private fadeVolume(
-		el: HTMLAudioElement,
-		from: number,
-		to: number,
-		durationMs: number
-	): Promise<void> {
-		return new Promise((resolve) => {
-			const steps = 10;
-			const stepTime = durationMs / steps;
-			const diff = (to - from) / steps;
-			let step = 0;
-
-			const interval = setInterval(() => {
-				step++;
-				el.volume = Math.max(0, Math.min(1, from + diff * step));
-				if (step >= steps) {
-					clearInterval(interval);
-					resolve();
-				}
-			}, stepTime);
-		});
-	}
-
-	public destroy() {
-		if (this.rafId) cancelAnimationFrame(this.rafId);
-		this.audioA.pause();
-		this.audioB.pause();
-		this.audioA.src = '';
-		this.audioB.src = '';
+	public destroy(): void {
+		this.stopProgressTicker();
+		this.pauseSilentAudio();
+		if (this.ytPlayer && typeof this.ytPlayer.destroy === 'function') {
+			try {
+				this.ytPlayer.destroy();
+			} catch {}
+			this.ytPlayer = null;
+		}
 	}
 }

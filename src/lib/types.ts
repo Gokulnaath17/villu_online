@@ -38,11 +38,23 @@ export interface UserSession {
 	email?: string;
 	name?: string;
 	role?: string;
+	isActive?: boolean;
 }
 
 export interface Session {
 	id: string;
 	userId: string;
 	expiresAt: number;
+	createdAt: number;
+	userAgent?: string;
+}
+
+export interface AuditLog {
+	id: number;
+	userId?: string;
+	username?: string;
+	action: string;
+	details?: string;
+	ipHash?: string;
 	createdAt: number;
 }

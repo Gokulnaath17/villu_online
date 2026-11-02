@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Search, Disc3, Home, Library, LogOut } from '@lucide/svelte';
+	import { Search, Disc3, Home, Library, LogOut, Shield } from '@lucide/svelte';
 
 	let searchQuery = $state('');
+	let user = $derived(page.data.user);
 
 	function handleSearchSubmit(e: SubmitEvent) {
 		e.preventDefault();
@@ -21,16 +22,20 @@
 		<span class="text-sm font-bold text-white">Villu</span>
 	</div>
 
-	<!-- Search Input Bar -->
-	<form onsubmit={handleSearchSubmit} class="flex-1 max-w-md relative">
-		<Search class="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-		<input
-			type="search"
-			bind:value={searchQuery}
-			placeholder="Search songs, artists, albums..."
-			class="w-full bg-zinc-900/90 border border-white/10 rounded-full pl-10 pr-4 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all shadow-inner"
-		/>
-	</form>
+	<!-- Search Input Bar (Hidden on /search to avoid duplication) -->
+	{#if !page.url.pathname.startsWith('/search')}
+		<form onsubmit={handleSearchSubmit} class="flex-1 max-w-md relative">
+			<Search class="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+			<input
+				type="search"
+				bind:value={searchQuery}
+				placeholder="Search songs, artists, albums..."
+				class="w-full bg-zinc-900/90 border border-white/10 rounded-full pl-10 pr-4 py-2 text-xs sm:text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all shadow-inner"
+			/>
+		</form>
+	{:else}
+		<div class="flex-1 max-w-md"></div>
+	{/if}
 
 	<!-- Mobile Navigation Bar -->
 	<div class="flex items-center gap-1 md:hidden">
@@ -48,6 +53,15 @@
 		>
 			<Library class="w-5 h-5" />
 		</a>
+		{#if user?.role === 'admin'}
+			<a
+				href="/admin"
+				class="p-2 rounded-lg text-zinc-400 hover:text-sky-400 {page.url.pathname.startsWith('/admin') ? 'text-sky-400' : ''}"
+				title="Admin Center"
+			>
+				<Shield class="w-5 h-5" />
+			</a>
+		{/if}
 		<a
 			href="/logout"
 			class="p-2 rounded-lg text-zinc-400 hover:text-rose-400"
