@@ -40,20 +40,26 @@ function extractExpiry(url: string): number | undefined {
  * Direct YouTube Innertube Android Player API
  * Direct POST without signature cipher required (as detailed in MECHANISM.md §3.1)
  */
-async function resolveViaInnertubeDirect(videoId: string): Promise<StreamData | null> {
+async function resolveViaInnertubeDirect(videoId: string, cookie?: string): Promise<StreamData | null> {
 	try {
+		const headers: Record<string, string> = {
+			'Content-Type': 'application/json',
+			'User-Agent': 'com.google.android.youtube/21.02.35 (Linux; U; Android 11) gzip'
+		};
+		if (cookie) {
+			headers['Cookie'] = cookie;
+		}
+
 		const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
 			method: 'POST',
-			headers: {
-				'Content-Type': 'application/json',
-				'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'
-			},
+			headers,
 			body: JSON.stringify({
 				context: {
 					client: {
 						clientName: 'ANDROID',
-						clientVersion: '20.10.38',
-						userAgent: 'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip',
+						clientVersion: '21.02.35',
+						androidSdkVersion: 30,
+						userAgent: 'com.google.android.youtube/21.02.35 (Linux; U; Android 11) gzip',
 						hl: 'en',
 						timeZone: 'UTC',
 						utcOffsetMinutes: 0,
@@ -121,7 +127,8 @@ async function resolveViaInnertubeDirect(videoId: string): Promise<StreamData | 
 export async function resolveStream(
 	videoId: string,
 	kv?: KVNamespace | null,
-	forceRefresh: boolean = false
+	forceRefresh: boolean = false,
+	cookie?: string
 ): Promise<StreamData> {
 	// 1. Check KV or Memory cache if not forcing refresh
 	if (!forceRefresh) {
@@ -130,8 +137,7 @@ export async function resolveStream(
 				const cachedStr = await kv.get(`stream:${videoId}`);
 				if (cachedStr) {
 					const cached = JSON.parse(cachedStr) as StreamData;
-					// Only use unexpired cached streams and avoid broken adaptive streams (itag 140/251)
-					if (!isStreamExpired(cached.url) && cached.itag !== 140 && cached.itag !== 251) {
+					if (!isStreamExpired(cached.url)) {
 						return { ...cached, fromCache: true };
 					}
 				}
@@ -140,14 +146,14 @@ export async function resolveStream(
 			}
 		} else {
 			const mem = memoryStreamCache.get(videoId);
-			if (mem && !isStreamExpired(mem.url) && mem.itag !== 140 && mem.itag !== 251) {
+			if (mem && !isStreamExpired(mem.url)) {
 				return { ...mem, fromCache: true };
 			}
 		}
 	}
 
 	// 2. Try Direct Innertube Android Player API
-	const stream = await resolveViaInnertubeDirect(videoId);
+	const stream = await resolveViaInnertubeDirect(videoId, cookie);
 
 	if (!stream || !stream.url) {
 		throw new Error(`Failed to resolve playable audio stream for videoId: ${videoId}`);

@@ -12,9 +12,9 @@ export const GET: RequestHandler = async ({ params, platform, request, locals })
 		throw error(400, 'Invalid videoId format');
 	}
 
-	const { STREAM_CACHE } = getBindings(platform);
+	const { STREAM_CACHE, YOUTUBE_COOKIE } = getBindings(platform);
 	try {
-		const stream = await resolveStream(videoId, STREAM_CACHE);
+		const stream = await resolveStream(videoId, STREAM_CACHE, false, YOUTUBE_COOKIE);
 
 		// Only forward Range header if client actually requested one
 		const clientRange = request.headers.get('range');
@@ -35,7 +35,7 @@ export const GET: RequestHandler = async ({ params, platform, request, locals })
 		if (!upstreamRes.ok) {
 			console.warn(`Upstream audio fetch status: ${upstreamRes.status} for ${videoId}, retrying fresh...`);
 			// If upstream returned error (e.g. 403 expired), retry with fresh stream resolution
-			const freshStream = await resolveStream(videoId, STREAM_CACHE, true);
+			const freshStream = await resolveStream(videoId, STREAM_CACHE, true, YOUTUBE_COOKIE);
 			upstreamRes = await fetch(freshStream.url, {
 				headers: upstreamHeaders,
 				redirect: 'follow'

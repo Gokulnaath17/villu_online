@@ -13,10 +13,10 @@ export const GET: RequestHandler = async ({ params, platform, url, locals }) => 
 	}
 
 	const forceRefresh = url.searchParams.get('refresh') === 'true';
-	const { STREAM_CACHE } = getBindings(platform);
+	const { STREAM_CACHE, YOUTUBE_COOKIE } = getBindings(platform);
 
 	try {
-		const stream = await resolveStream(videoId, STREAM_CACHE, forceRefresh);
+		const stream = await resolveStream(videoId, STREAM_CACHE, forceRefresh, YOUTUBE_COOKIE);
 		return json(stream, {
 			headers: {
 				'Cache-Control': 'private, max-age=14400'
