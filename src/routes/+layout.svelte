@@ -19,10 +19,13 @@
 
 	let hasInitialized = false;
 	$effect(() => {
-		if (!isAuthPage && user && !hasInitialized) {
-			hasInitialized = true;
-			playerStore.init();
-			libraryStore.loadAll();
+		if (!isAuthPage && user) {
+			playerStore.setDirectAudioMode(!!page.data.hasCustomCookie);
+			if (!hasInitialized) {
+				hasInitialized = true;
+				playerStore.init();
+				libraryStore.loadAll();
+			}
 		}
 	});
 

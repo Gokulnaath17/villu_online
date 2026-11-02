@@ -530,34 +530,44 @@
 					</div>
 				</div>
 
-				<div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
 					<div class="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
 						<div class="flex items-center gap-2 text-sky-400 font-bold">
 							<Lock class="w-4 h-4 shrink-0" />
-							1. Lock Screen Resume
+							1. Lock Screen & Earbud Resume (Chrome / Safari)
 						</div>
 						<p class="text-zinc-400 leading-relaxed">
-							When using Chrome/Safari, turning off the screen pauses playback. However, Villu keeps the <strong>Lock Screen Player Widget</strong> active. Simply tap <strong>Play</strong> on your lock screen notification or Bluetooth headphone button to resume playing with the screen off!
+							When using standard mobile Chrome or Safari, turning off the screen pauses video. However, Villu keeps the <strong>Lock Screen Player Widget</strong> active with album art and controls. Simply tap <strong>Play</strong> on your lock-screen notification or click your <strong>Bluetooth earbud button</strong> to resume playing with the screen completely off!
+						</p>
+					</div>
+
+					<div class="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
+						<div class="flex items-center gap-2 text-amber-400 font-bold">
+							<Shield class="w-4 h-4 shrink-0" />
+							2. Android Permission: Unrestricted Battery
+						</div>
+						<p class="text-zinc-400 leading-relaxed">
+							To prevent Android from killing background playback after 1 minute: Long-press your browser icon &rarr; <strong>App info</strong> &rarr; <strong>Battery</strong> &rarr; select <strong>Unrestricted</strong>. Also ensure lock-screen notifications are set to "Show all content".
 						</p>
 					</div>
 
 					<div class="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
 						<div class="flex items-center gap-2 text-indigo-400 font-bold">
 							<Radio class="w-4 h-4 shrink-0" />
-							2. Brave & Firefox Browsers
+							3. Brave Browser & Firefox (Zero-Pause)
 						</div>
 						<p class="text-zinc-400 leading-relaxed">
-							In <strong>Brave Browser</strong>, enable <em>Settings &rarr; Background Play</em> to play all web audio continuously with the screen off without ever pausing. In <strong>Firefox Android</strong>, install the <em>Video Background Play Fix</em> extension.
+							In <strong>Brave Browser</strong>, turn on <em>Settings &rarr; Background Play</em> to play all media continuously with the screen off with zero pauses. In <strong>Firefox Android</strong>, install the <em>Video Background Play Fix</em> extension from Add-ons.
 						</p>
 					</div>
 
 					<div class="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
 						<div class="flex items-center gap-2 text-emerald-400 font-bold">
 							<Sparkles class="w-4 h-4 shrink-0" />
-							3. Screen Wake Lock
+							4. Pure Audio via Admin Cookie (Native Audio)
 						</div>
 						<p class="text-zinc-400 leading-relaxed">
-							Villu automatically engages the <strong>W3C Screen Wake Lock API</strong> during playback. On supported devices, this prevents the display from going to sleep while music is playing, perfect for car dashboards or party docks.
+							By configuring a streaming cookie above, Villu streams pure <code class="text-emerald-400">audio/mp4</code> directly into HTML5 <code class="text-emerald-400">&lt;audio&gt;</code> elements. Mobile operating systems treat this as native audio (like Spotify) and never pause on screen lock.
 						</p>
 					</div>
 				</div>

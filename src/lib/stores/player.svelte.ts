@@ -20,6 +20,12 @@ class PlayerStore {
 	// Concurrency & Race-condition token (as per MECHANISM.md §5.1)
 	private _currentRequestId = 0;
 	private _isInitialized = false;
+	private _directAudioEnabled = false;
+
+	public setDirectAudioMode(enabled: boolean) {
+		this._directAudioEnabled = enabled;
+		this.engine?.setDirectAudioMode(enabled);
+	}
 
 	public get isPlaying(): boolean {
 		return this._isPlaying;
@@ -57,6 +63,14 @@ class PlayerStore {
 		this._isInitialized = true;
 
 		this.engine = new AudioEngine({
+			onPlay: () => {
+				this._isPlaying = true;
+				this.mediaSession?.updatePlaybackState(true);
+			},
+			onPause: () => {
+				this._isPlaying = false;
+				this.mediaSession?.updatePlaybackState(false);
+			},
 			onTimeUpdate: (pos, dur) => {
 				this._position = pos;
 				// True decoded duration patching (MECHANISM.md §5.5)
@@ -79,6 +93,8 @@ class PlayerStore {
 				this.preloadNextTrack();
 			}
 		});
+
+		this.engine.setDirectAudioMode(this._directAudioEnabled);
 
 		this.mediaSession = new MediaSessionManager({
 			onPlay: () => this.resume(),
