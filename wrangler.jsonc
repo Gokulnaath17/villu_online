@@ -1,0 +1,35 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "villu-online",
+	"compatibility_date": "2026-11-02",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"nodejs_als"
+	],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "villu-db",
+			"database_id": "villu-db-local"
+		}
+	],
+	"kv_namespaces": [
+		{
+			"binding": "STREAM_CACHE",
+			"id": "villu-stream-cache-local"
+		}
+	],
+	"r2_buckets": [
+		{
+			"binding": "ART_BUCKET",
+			"bucket_name": "villu-art"
+		}
+	],
+	"workers_dev": true,
+	"preview_urls": true
+}
