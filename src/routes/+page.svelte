@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { playerStore } from '#lib/stores/player.svelte';
 	import { libraryStore } from '#lib/stores/library.svelte';
 	import TrackCard from '#lib/components/TrackCard.svelte';
+	import { getGreeting } from '#lib/utils';
 	import type { SongTrack } from '#lib/types';
 	import { Play, Sparkles, History, Compass, Loader2 } from '@lucide/svelte';
 
@@ -14,23 +16,34 @@
 	let sections = $state<Section[]>([]);
 	let isLoading = $state(false);
 
-	let greeting = $derived(() => {
-		const hour = new Date().getHours();
-		if (hour < 12) return 'Good morning';
-		if (hour < 18) return 'Good afternoon';
-		return 'Good evening';
-	});
+	let user = $derived(page.data.user);
+	let displayName = $derived(user?.name || user?.username || '');
+	let greeting = $state(getGreeting());
 
-	onMount(async () => {
+	onMount(() => {
+		// Sync greeting based on the user's local browser timezone
+		greeting = getGreeting();
+
+		// Keep greeting accurate if user stays on the page across time boundaries
+		const interval = setInterval(() => {
+			greeting = getGreeting();
+		}, 60_000);
+
 		libraryStore.loadHistory();
-		try {
-			const res = await fetch('/api/home');
-			if (res.ok) {
-				sections = await res.json();
+		(async () => {
+			try {
+				const res = await fetch('/api/home');
+				if (res.ok) {
+					sections = await res.json();
+				}
+			} catch (err) {
+				console.warn('Home fetch error:', err);
 			}
-		} catch (err) {
-			console.warn('Home fetch error:', err);
-		}
+		})();
+
+		return () => {
+			clearInterval(interval);
+		};
 	});
 
 	function playAll(tracks: SongTrack[]) {
@@ -51,7 +64,7 @@
 				High Fidelity Audio
 			</div>
 			<h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
-				{greeting()}, Gokul
+				{greeting}{displayName ? `, ${displayName}` : ''}
 			</h2>
 			<p class="text-sm sm:text-base text-zinc-400">
 				Stream any music with zero downloads. Gapless playback, instant preloading, and uninterrupted sound.
