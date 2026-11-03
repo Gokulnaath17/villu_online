@@ -121,7 +121,7 @@
 	{/if}
 
 	<!-- Playlists Scroll List -->
-	<div class="flex-1 overflow-y-auto px-3 py-1 space-y-0.5">
+	<div class="flex-1 overflow-y-auto px-3 py-1 space-y-0.5 min-h-0">
 		{#if libraryStore.playlists.length === 0}
 			<p class="px-3.5 py-3 text-xs text-zinc-500 italic">No custom playlists</p>
 		{:else}
@@ -140,7 +140,7 @@
 	</div>
 
 	<!-- Bottom User & System Pill -->
-	<div class="p-4 border-t border-white/5 space-y-3">
+	<div class="p-4 border-t border-white/5 space-y-3 shrink-0">
 		{#if user}
 			<div class="flex items-center justify-between">
 				<div class="flex items-center gap-2.5 min-w-0">
@@ -154,10 +154,10 @@
 				</div>
 				<a
 					href="/logout"
-					class="p-1.5 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+					class="p-2 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
 					title="Sign out"
 				>
-					<LogOut class="w-3.5 h-3.5" />
+					<LogOut class="w-4 h-4" />
 				</a>
 			</div>
 		{/if}

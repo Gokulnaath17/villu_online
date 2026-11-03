@@ -4,3 +4,4 @@ CREATE TABLE IF NOT EXISTS system_settings (
     value TEXT,
     updated_at INTEGER DEFAULT 0
 );
+

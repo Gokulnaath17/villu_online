@@ -4,12 +4,13 @@
 	import { playerStore } from '#lib/stores/player.svelte';
 	import TrackCard from '#lib/components/TrackCard.svelte';
 	import type { SongTrack } from '#lib/types';
-	import { Search, Play, Loader2, Sparkles } from '@lucide/svelte';
+	import { Search, Play, Loader2, Sparkles, X } from '@lucide/svelte';
 
 	let query = $state('');
 	let results = $state<SongTrack[]>([]);
 	let isLoading = $state(false);
 	let hasSearched = $state(false);
+	let lastLoadedQuery: string | null = null;
 
 	const quickTags = [
 		'A.R. Rahman',
@@ -22,7 +23,8 @@
 	];
 
 	async function performSearch(searchTerm: string) {
-		if (!searchTerm.trim()) {
+		const term = searchTerm.trim();
+		if (!term) {
 			results = [];
 			hasSearched = false;
 			return;
@@ -31,7 +33,7 @@
 		isLoading = true;
 		hasSearched = true;
 		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(searchTerm.trim())}`);
+			const res = await fetch(`/api/search?q=${encodeURIComponent(term)}`);
 			if (res.ok) {
 				results = await res.json();
 			} else {
@@ -45,25 +47,53 @@
 		}
 	}
 
+	// Synchronize from URL param only when URL param changes.
+	// Does NOT read `query` inside $effect, so typing in the input never triggers this effect.
 	$effect(() => {
-		const qParam = page.url.searchParams.get('q');
-		if (qParam && qParam !== query) {
+		const qParam = page.url.searchParams.get('q') ?? '';
+		if (qParam !== lastLoadedQuery) {
+			lastLoadedQuery = qParam;
 			query = qParam;
-			performSearch(qParam);
+			if (qParam.trim()) {
+				performSearch(qParam);
+			} else {
+				results = [];
+				hasSearched = false;
+			}
 		}
 	});
 
-	function handleSubmit(e: SubmitEvent) {
-		e.preventDefault();
-		if (!query.trim()) return;
-		goto(`/search?q=${encodeURIComponent(query.trim())}`);
-		performSearch(query.trim());
+	function handleSubmit(e?: SubmitEvent) {
+		if (e) e.preventDefault();
+		const term = query.trim();
+		if (!term) return;
+
+		const currentParam = page.url.searchParams.get('q') ?? '';
+		if (currentParam === term) {
+			performSearch(term);
+		} else {
+			goto(`/search?q=${encodeURIComponent(term)}`);
+		}
 	}
 
 	function handleTagClick(tag: string) {
 		query = tag;
-		goto(`/search?q=${encodeURIComponent(tag)}`);
-		performSearch(tag);
+		const currentParam = page.url.searchParams.get('q') ?? '';
+		if (currentParam === tag) {
+			performSearch(tag);
+		} else {
+			goto(`/search?q=${encodeURIComponent(tag)}`);
+		}
+	}
+
+	function handleClear() {
+		query = '';
+		if (page.url.searchParams.has('q')) {
+			goto('/search');
+		} else {
+			results = [];
+			hasSearched = false;
+		}
 	}
 
 	function playAll() {
@@ -84,8 +114,26 @@
 				type="search"
 				bind:value={query}
 				placeholder="Search for songs, artists, or soundtracks..."
-				class="w-full bg-zinc-900 border border-white/10 rounded-2xl pl-12 pr-4 py-3.5 text-sm sm:text-base text-white placeholder-zinc-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all shadow-xl"
+				class="w-full bg-zinc-900 border border-white/10 rounded-2xl pl-12 pr-28 py-3.5 text-sm sm:text-base text-white placeholder-zinc-500 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500 transition-all shadow-xl"
 			/>
+			<div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+				{#if query}
+					<button
+						type="button"
+						onclick={handleClear}
+						class="p-1.5 rounded-full text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+						title="Clear search"
+					>
+						<X class="w-4 h-4" />
+					</button>
+				{/if}
+				<button
+					type="submit"
+					class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-sky-500 text-white hover:bg-sky-400 transition-colors cursor-pointer shadow-sm"
+				>
+					Search
+				</button>
+			</div>
 		</form>
 
 		<!-- Quick Filter Tags -->
