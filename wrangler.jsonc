@@ -1,6 +1,9 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "villu-online",
+	"build": {
+		"command": "npm run build"
+	},
 	"compatibility_date": "2026-11-02",
 	"compatibility_flags": [
 		"nodejs_compat",
