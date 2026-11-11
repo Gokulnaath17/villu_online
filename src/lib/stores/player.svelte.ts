@@ -353,7 +353,8 @@ class PlayerStore {
 				currentIndex: queueStore.currentIndex,
 				position: Math.floor(this._position),
 				loopMode: queueStore.loopMode,
-				isShuffle: queueStore.isShuffle
+				isShuffle: queueStore.isShuffle,
+				shuffledIndices: queueStore.shuffledIndices
 			};
 			localStorage.setItem('villu_prev_session', JSON.stringify(session));
 		} catch {}
@@ -366,6 +367,19 @@ class PlayerStore {
 			const data = JSON.parse(raw);
 			if (data && Array.isArray(data.tracks) && data.tracks.length > 0) {
 				queueStore.setTracks(data.tracks, data.currentIndex || 0);
+				if (data.loopMode) {
+					queueStore.setLoopMode(data.loopMode);
+				}
+				if (typeof data.isShuffle === 'boolean') {
+					queueStore.setShuffle(data.isShuffle);
+					if (
+						data.isShuffle &&
+						Array.isArray(data.shuffledIndices) &&
+						data.shuffledIndices.length === data.tracks.length
+					) {
+						queueStore.setShuffledIndices(data.shuffledIndices);
+					}
+				}
 				this._position = data.position || 0;
 				const current = queueStore.currentTrack;
 				if (current) {

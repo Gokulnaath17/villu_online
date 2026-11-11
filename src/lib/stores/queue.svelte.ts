@@ -23,6 +23,10 @@ class QueueStore {
 		return this._isShuffle;
 	}
 
+	public get shuffledIndices(): number[] {
+		return this._shuffledIndices;
+	}
+
 	public get currentTrack(): SongTrack | null {
 		if (this._tracks.length === 0 || this._currentIndex < 0 || this._currentIndex >= this._tracks.length) {
 			return null;
@@ -43,13 +47,35 @@ class QueueStore {
 
 	public setTracks(newTracks: SongTrack[], startIndex: number = 0) {
 		this._tracks = [...newTracks];
-		this._currentIndex = Math.max(0, Math.min(startIndex, newTracks.length - 1));
-		this.generateShuffleIndices();
+		this._currentIndex = Math.max(0, Math.min(startIndex, Math.max(0, newTracks.length - 1)));
+		this.generateShuffleIndices(this._currentIndex);
 	}
 
 	public setIndex(index: number) {
 		if (index >= 0 && index < this._tracks.length) {
 			this._currentIndex = index;
+		}
+	}
+
+	public setShuffle(enabled: boolean) {
+		if (this._isShuffle === enabled) return;
+		this._isShuffle = enabled;
+		if (this._isShuffle) {
+			this.generateShuffleIndices(this._currentIndex);
+		}
+	}
+
+	public toggleShuffle() {
+		this.setShuffle(!this._isShuffle);
+	}
+
+	public setLoopMode(mode: LoopMode) {
+		this._loopMode = mode;
+	}
+
+	public setShuffledIndices(indices: number[]) {
+		if (Array.isArray(indices) && indices.length === this._tracks.length) {
+			this._shuffledIndices = [...indices];
 		}
 	}
 
@@ -60,7 +86,22 @@ class QueueStore {
 		}
 		const insertPos = this._currentIndex + 1;
 		this._tracks.splice(insertPos, 0, track);
-		this.generateShuffleIndices();
+
+		if (this._isShuffle) {
+			// In shuffle mode:
+			// Shift all existing indices >= insertPos by +1
+			const updated = this._shuffledIndices.map((idx) => (idx >= insertPos ? idx + 1 : idx));
+			// Insert the new track right after the currently playing track in shuffle order
+			const currentPos = updated.indexOf(this._currentIndex);
+			if (currentPos >= 0) {
+				updated.splice(currentPos + 1, 0, insertPos);
+			} else {
+				updated.push(insertPos);
+			}
+			this._shuffledIndices = updated;
+		} else {
+			this.generateShuffleIndices(this._currentIndex);
+		}
 	}
 
 	public addToQueue(track: SongTrack) {
@@ -69,7 +110,14 @@ class QueueStore {
 			return;
 		}
 		this._tracks.push(track);
-		this.generateShuffleIndices();
+		const newIdx = this._tracks.length - 1;
+		if (this._isShuffle) {
+			if (this._shuffledIndices.length === 0) {
+				this.generateShuffleIndices(this._currentIndex);
+			} else {
+				this._shuffledIndices.push(newIdx);
+			}
+		}
 	}
 
 	public addBatch(tracks: SongTrack[]) {
@@ -77,8 +125,20 @@ class QueueStore {
 			this.setTracks(tracks, 0);
 			return;
 		}
+		const startIdx = this._tracks.length;
 		this._tracks.push(...tracks);
-		this.generateShuffleIndices();
+		if (this._isShuffle) {
+			if (this._shuffledIndices.length === 0) {
+				this.generateShuffleIndices(this._currentIndex);
+			} else {
+				const newIndices = Array.from({ length: tracks.length }, (_, i) => startIdx + i);
+				for (let i = newIndices.length - 1; i > 0; i--) {
+					const j = Math.floor(Math.random() * (i + 1));
+					[newIndices[i], newIndices[j]] = [newIndices[j], newIndices[i]];
+				}
+				this._shuffledIndices.push(...newIndices);
+			}
+		}
 	}
 
 	public removeAt(index: number) {
@@ -89,7 +149,14 @@ class QueueStore {
 		} else if (this._currentIndex >= this._tracks.length) {
 			this._currentIndex = Math.max(0, this._tracks.length - 1);
 		}
-		this.generateShuffleIndices();
+
+		if (this._isShuffle) {
+			const pos = this._shuffledIndices.indexOf(index);
+			if (pos !== -1) {
+				this._shuffledIndices.splice(pos, 1);
+			}
+			this._shuffledIndices = this._shuffledIndices.map((idx) => (idx > index ? idx - 1 : idx));
+		}
 	}
 
 	public clearUpcoming() {
@@ -98,7 +165,7 @@ class QueueStore {
 		if (current) {
 			this._tracks = [current];
 			this._currentIndex = 0;
-			this.generateShuffleIndices();
+			this._shuffledIndices = [0];
 		}
 	}
 
@@ -121,13 +188,14 @@ class QueueStore {
 		} else if (oldIndex > this._currentIndex && targetIndex <= this._currentIndex) {
 			this._currentIndex++;
 		}
-		this.generateShuffleIndices();
-	}
 
-	public toggleShuffle() {
-		this._isShuffle = !this._isShuffle;
 		if (this._isShuffle) {
-			this.generateShuffleIndices();
+			this._shuffledIndices = this._shuffledIndices.map((idx) => {
+				if (idx === oldIndex) return targetIndex;
+				if (oldIndex < targetIndex && idx > oldIndex && idx <= targetIndex) return idx - 1;
+				if (oldIndex > targetIndex && idx >= targetIndex && idx < oldIndex) return idx + 1;
+				return idx;
+			});
 		}
 	}
 
@@ -146,7 +214,14 @@ class QueueStore {
 		if (this._tracks.length === 0) return null;
 
 		if (this._isShuffle) {
-			const posInShuffled = this._shuffledIndices.indexOf(this._currentIndex);
+			if (this._shuffledIndices.length !== this._tracks.length) {
+				this.generateShuffleIndices(this._currentIndex);
+			}
+			let posInShuffled = this._shuffledIndices.indexOf(this._currentIndex);
+			if (posInShuffled === -1) {
+				this.generateShuffleIndices(this._currentIndex);
+				posInShuffled = this._shuffledIndices.indexOf(this._currentIndex);
+			}
 			if (posInShuffled >= 0 && posInShuffled + 1 < this._shuffledIndices.length) {
 				return this._shuffledIndices[posInShuffled + 1];
 			}
@@ -164,7 +239,14 @@ class QueueStore {
 		if (this._tracks.length === 0) return null;
 
 		if (this._isShuffle) {
-			const posInShuffled = this._shuffledIndices.indexOf(this._currentIndex);
+			if (this._shuffledIndices.length !== this._tracks.length) {
+				this.generateShuffleIndices(this._currentIndex);
+			}
+			let posInShuffled = this._shuffledIndices.indexOf(this._currentIndex);
+			if (posInShuffled === -1) {
+				this.generateShuffleIndices(this._currentIndex);
+				posInShuffled = this._shuffledIndices.indexOf(this._currentIndex);
+			}
 			if (posInShuffled > 0) {
 				return this._shuffledIndices[posInShuffled - 1];
 			}
@@ -180,14 +262,36 @@ class QueueStore {
 		return this._loopMode === 'all' ? this._tracks.length - 1 : null;
 	}
 
-	private generateShuffleIndices() {
+	private generateShuffleIndices(startingIndex?: number) {
 		const len = this._tracks.length;
-		const indices = Array.from({ length: len }, (_, i) => i);
-		for (let i = indices.length - 1; i > 0; i--) {
-			const j = Math.floor(Math.random() * (i + 1));
-			[indices[i], indices[j]] = [indices[j], indices[i]];
+		if (len === 0) {
+			this._shuffledIndices = [];
+			return;
 		}
-		this._shuffledIndices = indices;
+		if (len === 1) {
+			this._shuffledIndices = [0];
+			return;
+		}
+
+		const current =
+			startingIndex !== undefined
+				? Math.max(0, Math.min(startingIndex, len - 1))
+				: Math.max(0, Math.min(this._currentIndex, len - 1));
+
+		const others: number[] = [];
+		for (let i = 0; i < len; i++) {
+			if (i !== current) {
+				others.push(i);
+			}
+		}
+
+		// Unbiased Fisher-Yates shuffle
+		for (let i = others.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[others[i], others[j]] = [others[j], others[i]];
+		}
+
+		this._shuffledIndices = [current, ...others];
 	}
 }
 
