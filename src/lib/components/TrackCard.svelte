@@ -4,7 +4,7 @@
 	import { queueStore } from '#lib/stores/queue.svelte';
 	import { libraryStore } from '#lib/stores/library.svelte';
 	import { formatTime } from '#lib/utils';
-	import { Play, Pause, Heart, MoreVertical, Plus, ListPlus, Radio } from '@lucide/svelte';
+	import { Play, Pause, Heart, MoreVertical, Plus, ListPlus, Radio, Download, ChevronRight, Check } from '@lucide/svelte';
 
 	interface Props {
 		track: SongTrack;
@@ -17,6 +17,9 @@
 
 	let isMenuOpen = $state(false);
 	let isPlaylistSelectOpen = $state(false);
+	let isDownloadSelectOpen = $state(false);
+	let downloadProgress = $state<number | null>(null);
+	let isDownloadComplete = $state(false);
 
 	let isCurrent = $derived(playerStore.currentTrack?.videoId === track.videoId);
 	let isPlaying = $derived(isCurrent && playerStore.isPlaying);
@@ -52,6 +55,88 @@
 		libraryStore.addTrackToPlaylist(playlistId, track);
 		isPlaylistSelectOpen = false;
 		isMenuOpen = false;
+	}
+
+	async function handleDownload(format: 'm4a' | 'webm' | 'opus', e: MouseEvent) {
+		e.stopPropagation();
+		if (downloadProgress !== null) return;
+
+		isDownloadSelectOpen = false;
+		isMenuOpen = false;
+		downloadProgress = 0;
+		isDownloadComplete = false;
+
+		try {
+			const params = new URLSearchParams({
+				format,
+				title: track.title,
+				artist: track.artist
+			});
+			const res = await fetch(`/api/download/${track.videoId}?${params}`);
+			if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+
+			const contentLengthHeader = res.headers.get('content-length');
+			const contentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+			const reader = res.body?.getReader();
+
+			if (!reader) {
+				const blob = await res.blob();
+				saveBlob(blob, format);
+				downloadProgress = 100;
+				isDownloadComplete = true;
+				resetTracker();
+				return;
+			}
+
+			let receivedBytes = 0;
+			const chunks: Uint8Array[] = [];
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				if (value) {
+					chunks.push(value);
+					receivedBytes += value.length;
+					if (contentLength > 0) {
+						downloadProgress = Math.min(99, Math.round((receivedBytes / contentLength) * 100));
+					} else {
+						downloadProgress = Math.min(95, (downloadProgress ?? 0) + 5);
+					}
+				}
+			}
+
+			downloadProgress = 100;
+			isDownloadComplete = true;
+
+			const mimeType = format === 'webm' ? 'audio/webm' : format === 'opus' ? 'audio/ogg' : 'audio/mp4';
+			const blob = new Blob(chunks as BlobPart[], { type: mimeType });
+			saveBlob(blob, format);
+			resetTracker();
+		} catch (err) {
+			console.error('Download error:', err);
+			downloadProgress = null;
+			isDownloadComplete = false;
+		}
+	}
+
+	function saveBlob(blob: Blob, format: string) {
+		const objectUrl = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = objectUrl;
+		const ext = format === 'opus' ? 'opus' : format === 'webm' ? 'webm' : 'm4a';
+		const safeTitle = `${track.artist} - ${track.title}`.replace(/[/\\?%*:|"<>]/g, '_');
+		a.download = `${safeTitle}.${ext}`;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(objectUrl);
+	}
+
+	function resetTracker() {
+		setTimeout(() => {
+			downloadProgress = null;
+			isDownloadComplete = false;
+		}, 2000);
 	}
 </script>
 
@@ -117,6 +202,86 @@
 		<Heart class="w-4 h-4 {isLiked ? 'text-rose-500 fill-rose-500' : ''}" />
 	</button>
 
+	<!-- Download Button with Tracker -->
+	<div class="relative shrink-0">
+		<button
+			type="button"
+			class="p-2 rounded-full hover:bg-white/10 transition-colors shrink-0 {downloadProgress !== null ? 'text-sky-400' : 'text-zinc-400 hover:text-white'}"
+			onclick={(e) => {
+				e.stopPropagation();
+				if (downloadProgress !== null) return;
+				isDownloadSelectOpen = !isDownloadSelectOpen;
+				isMenuOpen = false;
+			}}
+			title={downloadProgress !== null ? `Downloading: ${downloadProgress}%` : 'Download song'}
+		>
+			{#if isDownloadComplete}
+				<Check class="w-4 h-4 text-emerald-400" />
+			{:else if downloadProgress !== null}
+				<!-- Live Download Progress Tracker -->
+				<div class="relative flex items-center justify-center w-5 h-5">
+					<svg class="w-5 h-5 -rotate-90" viewBox="0 0 36 36">
+						<path
+							class="text-zinc-700"
+							stroke-width="4"
+							stroke="currentColor"
+							fill="none"
+							d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+						/>
+						<path
+							class="text-sky-400 transition-all duration-150"
+							stroke-dasharray="{downloadProgress}, 100"
+							stroke-width="4"
+							stroke-linecap="round"
+							stroke="currentColor"
+							fill="none"
+							d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+						/>
+					</svg>
+					<span class="absolute text-[8px] font-mono font-bold text-sky-400 leading-none">
+						{downloadProgress}
+					</span>
+				</div>
+			{:else}
+				<Download class="w-4 h-4" />
+			{/if}
+		</button>
+
+		<!-- Format selector popup -->
+		{#if isDownloadSelectOpen}
+			<div
+				class="absolute right-0 bottom-full mb-1 w-48 rounded-xl bg-zinc-900 border border-white/10 shadow-2xl p-1.5 z-40 text-xs text-zinc-200"
+				onclick={(e) => e.stopPropagation()}
+				onkeydown={(e) => e.stopPropagation()}
+				role="menu"
+				tabindex="0"
+			>
+				<p class="px-2 py-1 text-[10px] text-zinc-400 uppercase tracking-wider font-semibold">Select Format</p>
+				<button
+					class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-left text-zinc-200 transition-colors"
+					onclick={(e) => handleDownload('m4a', e)}
+				>
+					<span class="font-medium">M4A (AAC)</span>
+					<span class="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20">Recommended</span>
+				</button>
+				<button
+					class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-left text-zinc-200 transition-colors"
+					onclick={(e) => handleDownload('webm', e)}
+				>
+					<span class="font-medium">WebM Audio</span>
+					<span class="text-[9px] font-bold text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded border border-violet-500/20">WebM</span>
+				</button>
+				<button
+					class="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-left text-zinc-200 transition-colors"
+					onclick={(e) => handleDownload('opus', e)}
+				>
+					<span class="font-medium">Opus Audio</span>
+					<span class="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">Opus</span>
+				</button>
+			</div>
+		{/if}
+	</div>
+
 	<!-- More Options Menu -->
 	<div class="relative shrink-0">
 		<button
@@ -126,6 +291,7 @@
 				e.stopPropagation();
 				isMenuOpen = !isMenuOpen;
 				isPlaylistSelectOpen = false;
+				isDownloadSelectOpen = false;
 			}}
 			title="More options"
 		>
