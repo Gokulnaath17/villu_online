@@ -81,9 +81,9 @@
 
 		<div class="flex items-center justify-between gap-4 max-w-7xl mx-auto">
 			<!-- Track Details (Left) -->
-			<div class="flex items-center gap-3 min-w-0 w-1/4">
+			<div class="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1 max-w-[42%] sm:max-w-xs md:max-w-sm lg:max-w-md">
 				<button
-					class="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 group shadow-md bg-zinc-800"
+					class="relative w-12 h-12 sm:w-14 sm:h-14 rounded-xl overflow-hidden shrink-0 group shadow-md bg-zinc-800"
 					onclick={() => playerStore.toggleExpand()}
 					title="Expand player"
 				>
@@ -99,31 +99,32 @@
 					</div>
 				</button>
 
-				<div class="min-w-0">
+				<div class="min-w-0 flex-1">
 					<button
 						type="button"
-						class="text-sm font-semibold text-zinc-100 truncate hover:text-white cursor-pointer text-left block max-w-full"
+						class="text-sm sm:text-base font-semibold text-zinc-100 truncate hover:text-white cursor-pointer text-left block max-w-full"
 						onclick={() => playerStore.toggleExpand()}
+						title={currentTrack.title}
 					>
 						{currentTrack.title}
 					</button>
-					<p class="text-xs text-zinc-400 truncate mt-0.5">
+					<p class="text-xs sm:text-sm text-zinc-400 truncate mt-0.5" title={currentTrack.artist}>
 						{currentTrack.artist}
 					</p>
 				</div>
 
 				<button
 					type="button"
-					class="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors shrink-0 hidden sm:block"
+					class="p-2 sm:p-2.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors shrink-0 hidden sm:block"
 					onclick={() => libraryStore.toggleLike(currentTrack)}
 					title={isLiked ? 'Unlike' : 'Like'}
 				>
-					<Heart class="w-4 h-4 {isLiked ? 'text-rose-500 fill-rose-500' : ''}" />
+					<Heart class="w-4 h-4 sm:w-4.5 sm:h-4.5 {isLiked ? 'text-rose-500 fill-rose-500' : ''}" />
 				</button>
 			</div>
 
 			<!-- Center Transport Controls & Timing -->
-			<div class="flex flex-col items-center gap-1 flex-1 max-w-md">
+			<div class="flex flex-col items-center gap-1 shrink-0 flex-1 max-w-md px-2">
 				<div class="flex items-center gap-3 sm:gap-5">
 					<!-- Shuffle -->
 					<button
@@ -195,7 +196,7 @@
 			</div>
 
 			<!-- Right Secondary Controls (Volume, Queue, Expand) -->
-			<div class="flex items-center justify-end gap-3 w-1/4">
+			<div class="flex items-center justify-end gap-3 shrink-0 min-w-fit">
 				<!-- Queue Toggle -->
 				<button
 					type="button"

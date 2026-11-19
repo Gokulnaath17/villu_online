@@ -101,7 +101,7 @@
 					<p class="text-xs text-zinc-600 mt-1">Click the heart icon on any track to add it here</p>
 				</div>
 			{:else}
-				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 					{#each likedTracks as track, idx}
 						<TrackCard {track} index={idx} queueContext={likedTracks} showIndex={true} />
 					{/each}
@@ -203,7 +203,7 @@
 					<p class="text-xs text-zinc-600 mt-1">Tracks you stream will automatically appear here</p>
 				</div>
 			{:else}
-				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 					{#each history as track, idx}
 						<TrackCard {track} index={idx} queueContext={history} showIndex={true} />
 					{/each}

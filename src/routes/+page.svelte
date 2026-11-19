@@ -90,7 +90,7 @@
 				</button>
 			</div>
 
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				{#each libraryStore.history.slice(0, 6) as track, idx}
 					<TrackCard {track} index={idx} queueContext={libraryStore.history} showIndex={false} />
 				{/each}
@@ -125,7 +125,7 @@
 						</button>
 					</div>
 
-					<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 						{#each sec.tracks as track, idx}
 							<TrackCard {track} index={idx} queueContext={sec.tracks} showIndex={true} />
 						{/each}

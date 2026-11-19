@@ -22,7 +22,7 @@
 
 {#if playerStore.isQueueOpen}
 	<div
-		class="fixed inset-y-0 right-0 z-40 w-full sm:w-96 bg-zinc-950/95 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200"
+		class="fixed inset-y-0 right-0 z-40 w-full sm:w-[420px] bg-zinc-950/95 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200"
 	>
 		<!-- Header -->
 		<div class="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
@@ -74,7 +74,7 @@
 					>
 						<!-- Thumbnail -->
 						<div
-							class="relative w-10 h-10 rounded-lg overflow-hidden shrink-0 bg-zinc-800 cursor-pointer"
+							class="relative w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-zinc-800 cursor-pointer"
 							onclick={() => playerStore.playIndex(idx)}
 							role="button"
 							tabindex="0"
@@ -100,10 +100,13 @@
 							tabindex="0"
 							onkeydown={(e) => e.key === 'Enter' && playerStore.playIndex(idx)}
 						>
-							<h4 class="text-xs font-semibold truncate {isPlaying ? 'text-sky-400' : 'text-zinc-200 group-hover:text-white'}">
+							<h4
+								class="text-xs sm:text-sm font-semibold line-clamp-2 leading-snug {isPlaying ? 'text-sky-400' : 'text-zinc-200 group-hover:text-white'}"
+								title={track.title}
+							>
 								{track.title}
 							</h4>
-							<p class="text-[11px] text-zinc-400 truncate mt-0.5">
+							<p class="text-[11px] sm:text-xs text-zinc-400 truncate mt-0.5" title={track.artist}>
 								{track.artist}
 							</p>
 						</div>

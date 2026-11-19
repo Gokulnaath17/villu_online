@@ -94,17 +94,17 @@
 				<p class="text-xs text-zinc-600 mt-1">Search for tracks and add them using the track options menu</p>
 			</div>
 		{:else}
-			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 				{#each playlist.tracks as track, idx}
 					<div class="relative group">
 						<TrackCard {track} index={idx} queueContext={playlist.tracks} showIndex={true} />
 						<button
 							type="button"
-							class="absolute right-12 top-1/2 -translate-y-1/2 p-2 rounded-full text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity"
+							class="absolute right-28 top-1/2 -translate-y-1/2 p-2 rounded-full text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900/80 backdrop-blur-sm"
 							onclick={() => removeTrack(track.videoId)}
 							title="Remove from playlist"
 						>
-							<Trash2 class="w-3.5 h-3.5" />
+							<Trash2 class="w-4 h-4" />
 						</button>
 					</div>
 				{/each}

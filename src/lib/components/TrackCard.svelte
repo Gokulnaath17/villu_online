@@ -141,7 +141,7 @@
 </script>
 
 <div
-	class="group relative flex items-center gap-3.5 px-3 py-2.5 rounded-xl transition-all duration-200 cursor-pointer select-none hover:bg-white/[0.06] {isCurrent ? 'bg-white/[0.08]' : ''}"
+	class="group relative flex items-center gap-3.5 sm:gap-4 px-3.5 py-3 sm:px-4 sm:py-3.5 rounded-2xl transition-all duration-200 cursor-pointer select-none hover:bg-white/[0.06] {isCurrent ? 'bg-white/[0.08]' : ''}"
 	onclick={handlePlay}
 	role="button"
 	tabindex="0"
@@ -149,7 +149,7 @@
 >
 	<!-- Index / Play indicator -->
 	{#if showIndex && index !== undefined}
-		<div class="w-6 text-center text-xs font-medium text-zinc-500 group-hover:hidden">
+		<div class="w-6 text-center text-xs sm:text-sm font-medium text-zinc-500 group-hover:hidden shrink-0">
 			{#if isPlaying}
 				<span class="inline-block w-2.5 h-2.5 rounded-full bg-sky-400 animate-pulse"></span>
 			{:else}
@@ -159,7 +159,7 @@
 	{/if}
 
 	<!-- Thumbnail with overlay -->
-	<div class="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-zinc-800 shadow-md">
+	<div class="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 bg-zinc-800 shadow-md">
 		<img
 			src={track.thumbnail}
 			alt={track.title}
@@ -170,43 +170,46 @@
 			class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
 		>
 			{#if isPlaying}
-				<Pause class="w-5 h-5 text-white fill-white" />
+				<Pause class="w-6 h-6 text-white fill-white" />
 			{:else}
-				<Play class="w-5 h-5 text-white fill-white translate-x-0.5" />
+				<Play class="w-6 h-6 text-white fill-white translate-x-0.5" />
 			{/if}
 		</div>
 	</div>
 
 	<!-- Title & Artist -->
 	<div class="flex-1 min-w-0 pr-2">
-		<h4 class="text-sm font-semibold truncate transition-colors {isCurrent ? 'text-sky-400' : 'text-zinc-100 group-hover:text-white'}">
+		<h4
+			class="text-sm sm:text-base font-semibold line-clamp-2 leading-snug transition-colors {isCurrent ? 'text-sky-400' : 'text-zinc-100 group-hover:text-white'}"
+			title={track.title}
+		>
 			{track.title}
 		</h4>
-		<p class="text-xs text-zinc-400 truncate mt-0.5">
+		<p class="text-xs sm:text-sm text-zinc-400 truncate mt-1" title={track.artist}>
 			{track.artist}
 		</p>
 	</div>
 
 	<!-- Duration -->
-	<div class="text-xs text-zinc-400 font-mono tracking-tight shrink-0 hidden sm:block">
+	<div class="text-xs sm:text-sm text-zinc-400 font-mono tracking-tight shrink-0 hidden sm:block">
 		{formatTime(track.duration)}
 	</div>
 
 	<!-- Like Button -->
 	<button
 		type="button"
-		class="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors shrink-0"
+		class="p-2 sm:p-2.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors shrink-0"
 		onclick={handleToggleLike}
 		title={isLiked ? 'Unlike' : 'Like'}
 	>
-		<Heart class="w-4 h-4 {isLiked ? 'text-rose-500 fill-rose-500' : ''}" />
+		<Heart class="w-4 h-4 sm:w-4.5 sm:h-4.5 {isLiked ? 'text-rose-500 fill-rose-500' : ''}" />
 	</button>
 
 	<!-- Download Button with Tracker -->
 	<div class="relative shrink-0">
 		<button
 			type="button"
-			class="p-2 rounded-full hover:bg-white/10 transition-colors shrink-0 {downloadProgress !== null ? 'text-sky-400' : 'text-zinc-400 hover:text-white'}"
+			class="p-2 sm:p-2.5 rounded-full hover:bg-white/10 transition-colors shrink-0 {downloadProgress !== null ? 'text-sky-400' : 'text-zinc-400 hover:text-white'}"
 			onclick={(e) => {
 				e.stopPropagation();
 				if (downloadProgress !== null) return;
@@ -286,7 +289,7 @@
 	<div class="relative shrink-0">
 		<button
 			type="button"
-			class="p-2 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
+			class="p-2 sm:p-2.5 rounded-full hover:bg-white/10 text-zinc-400 hover:text-white transition-colors"
 			onclick={(e) => {
 				e.stopPropagation();
 				isMenuOpen = !isMenuOpen;
@@ -295,7 +298,7 @@
 			}}
 			title="More options"
 		>
-			<MoreVertical class="w-4 h-4" />
+			<MoreVertical class="w-4 h-4 sm:w-4.5 sm:h-4.5" />
 		</button>
 
 		{#if isMenuOpen}
