@@ -69,7 +69,7 @@ export class AudioEngine {
 	private ytPlayerReady: boolean = false;
 	private nativeAudio: HTMLAudioElement | null = null;
 	private activeSourceType: 'native' | 'youtube' = 'youtube';
-	private preferDirectAudio: boolean = false;
+	private preferDirectAudio: boolean = true;
 	private silentAudio: HTMLAudioElement | null = null;
 	private progressTimer: any = null;
 	private volume: number = 1.0;
@@ -99,17 +99,26 @@ export class AudioEngine {
 		this.preferDirectAudio = enabled;
 	}
 
+	private isMobile(): boolean {
+		if (typeof navigator === 'undefined') return false;
+		return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+	}
+
 	private setupVisibilityListener() {
 		if (typeof document === 'undefined') return;
 		document.addEventListener('visibilitychange', () => {
 			if (!document.hidden && this.isPlayingState) {
 				this.acquireWakeLock();
+			} else if (document.hidden) {
+				this.releaseWakeLock();
 			}
 		});
 	}
 
 	private async acquireWakeLock() {
 		try {
+			// Screen wake locks keep GPU/display in high-power state; only engage on mobile where needed to avoid sleeping audio
+			if (!this.isMobile()) return;
 			if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !this.wakeLock) {
 				this.wakeLock = await (navigator as any).wakeLock.request('screen');
 				this.wakeLock.addEventListener?.('release', () => {
@@ -274,6 +283,11 @@ export class AudioEngine {
 					onReady: (event: any) => {
 						this.ytPlayerReady = true;
 						this.applyVolume();
+						try {
+							if (typeof this.ytPlayer.setPlaybackQuality === 'function') {
+								this.ytPlayer.setPlaybackQuality('small');
+							}
+						} catch {}
 
 						if (this.pendingVideo && this.activeSourceType === 'youtube') {
 							const { videoId, startPos } = this.pendingVideo;
@@ -290,6 +304,11 @@ export class AudioEngine {
 							this.isPlayingState = true;
 							this.callbacks.onLoading(false);
 							this.callbacks.onPlay?.();
+							try {
+								if (typeof this.ytPlayer.setPlaybackQuality === 'function') {
+									this.ytPlayer.setPlaybackQuality('small');
+								}
+							} catch {}
 							this.startProgressTicker();
 							this.startSilentAudio();
 							this.acquireWakeLock();
@@ -379,7 +398,8 @@ export class AudioEngine {
 	}
 
 	private startSilentAudio() {
-		if (this.silentAudio) {
+		// Silent keepalive WAV loop is only required on mobile OS to prevent audio thread suspension
+		if (this.silentAudio && this.isMobile()) {
 			this.silentAudio.play().catch(() => {
 				// Browser autoplay policy might reject if no user interaction, safely ignore
 			});
@@ -415,7 +435,7 @@ export class AudioEngine {
 					}
 				}
 			} catch {}
-		}, 250);
+		}, 500);
 	}
 
 	private stopProgressTicker() {

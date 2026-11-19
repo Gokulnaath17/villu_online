@@ -20,7 +20,7 @@
 	let hasInitialized = false;
 	$effect(() => {
 		if (!isAuthPage && user) {
-			playerStore.setDirectAudioMode(!!page.data.hasCustomCookie);
+			playerStore.setDirectAudioMode(true);
 			if (!hasInitialized) {
 				hasInitialized = true;
 				playerStore.init();

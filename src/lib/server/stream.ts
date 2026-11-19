@@ -88,15 +88,14 @@ async function resolveViaInnertubeDirect(videoId: string, cookie?: string): Prom
 			.filter((f) => f.mimeType && f.mimeType.startsWith('audio/') && f.url)
 			.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
 
-		// Prioritize progressive format itag 18 (MP4 with AAC audio track).
-		// Progressive streams include ratebypass=yes and allow arbitrary range requests
-		// without YouTube googlevideo CDN throwing 403 Forbidden on chunk/unbounded boundaries.
+		// Prioritize pure audio formats (itag 140 AAC, itag 251 Opus) when direct URL is available;
+		// fallback to progressive format itag 18 (MP4 with AAC audio track).
 		const preferred =
-			formats.find((f) => f.itag === 18 && f.url) ||
-			formats.find((f) => f.itag === 22 && f.url) ||
 			audioFormats.find((f) => f.itag === 140 && f.url) ||
 			audioFormats.find((f) => f.itag === 251 && f.url) ||
-			audioFormats[0] ||
+			audioFormats.find((f) => f.url) ||
+			formats.find((f) => f.itag === 18 && f.url) ||
+			formats.find((f) => f.itag === 22 && f.url) ||
 			formats.find((f) => f.url);
 
 		if (!preferred || !preferred.url) return null;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { libraryStore } from '#lib/stores/library.svelte';
+	import { playerStore } from '#lib/stores/player.svelte';
 	import { Home, Search, Library, Heart, Plus, Radio, Disc3, LogOut, Shield } from '@lucide/svelte';
 
 	let isCreatingPlaylist = $state(false);
@@ -20,7 +21,7 @@
 	<!-- Brand Header -->
 	<div class="p-6 pb-4 flex items-center gap-3">
 		<div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-sky-500/20">
-			<Disc3 class="w-5 h-5 text-white animate-spin [animation-duration:10s]" />
+			<Disc3 class="w-5 h-5 text-white transition-transform {playerStore.isPlaying ? 'animate-spin [animation-duration:10s]' : ''}" />
 		</div>
 		<div>
 			<h1 class="text-base font-bold tracking-tight text-white flex items-center gap-1.5">

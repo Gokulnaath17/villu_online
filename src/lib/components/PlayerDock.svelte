@@ -58,9 +58,9 @@
 	<aside aria-label="Audio Player" class="fixed bottom-0 left-0 md:left-64 right-0 z-30 glass-dock select-none px-4 py-2.5 sm:px-6 sm:py-3 transition-transform duration-300">
 		<!-- Progress advancement bar -->
 		<div class="relative w-full group -top-2.5 sm:-top-3 cursor-pointer">
-			<div class="w-full h-1 bg-white/10 group-hover:h-2 rounded-full overflow-hidden transition-all duration-150">
+			<div class="w-full h-1 bg-white/10 group-hover:h-2 rounded-full overflow-hidden transition-[height] duration-150">
 				<div
-					class="h-full bg-sky-400 group-hover:bg-sky-300 rounded-full transition-all duration-75 relative"
+					class="h-full bg-sky-400 group-hover:bg-sky-300 rounded-full relative"
 					style="width: {Math.max(0, Math.min(100, progressPercent))}%"
 				></div>
 			</div>
